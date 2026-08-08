@@ -1,0 +1,112 @@
+---
+name: vytdl-cli
+description: |
+  Build, run, and extend the vYtDL Go CLI (yt-dl wrapper). Use when downloading
+  videos via CLI, adding download flags, playlist resume, TUI, VTT analyze,
+  multi-site yt-dlp usage (YouTube/Bilibili/TikTok/X/小红书), or comparing to
+  raw yt-dlp. Triggers: vYtDL, yt-dl CLI, go build vYtDL, --cookies-from-browser,
+  playlist resume, download_record.
+---
+
+# vYtDL CLI Skill
+
+Standalone Go CLI that wraps **yt-dlp** as a subprocess. Not a separate download engine.
+
+## Repo
+
+Canonical path (local): `/Users/patrick/innate/projects/vYtDL`  
+Module: `github.com/innate/yt-dl`
+
+## When to use this skill
+
+- Build / install / debug the CLI
+- Add flags or change download behavior
+- Multi-platform download examples (any yt-dlp site)
+- Explain differences vs raw `yt-dlp`
+- VTT subtitle analyze subcommand
+
+Do **not** use this skill for Tauri Desktop / Web UI (those stay in `innate-keepthem`).
+
+## Build & run
+
+```bash
+cd /Users/patrick/innate/projects/vYtDL   # or clone path
+go build -o vYtDL .
+./scripts/build.sh                        # cross-compile → dist/
+
+./vYtDL download --help
+./vYtDL download --no-tui -o ./downloads -q 1080 "URL"
+```
+
+Config: `config.json` / `VYTDL_CONFIG` / `--yt-dlp-bin`. Empty `yt_dlp_bin` → PATH lookup.
+
+Requires: Go 1.24+, yt-dlp on PATH, optional FFmpeg.
+
+## Architecture
+
+```
+main.go → cmd.Execute()
+  download  → internal/downloader (yt-dlp subprocess) + optional TUI
+  analyze   → internal/vtt
+```
+
+| Path | Role |
+|------|------|
+| `cmd/download.go` | Flags, concurrency, orchestration |
+| `cmd/analyze.go` | VTT → text/markdown |
+| `internal/downloader/` | Args build, progress parse, playlist resume |
+| `internal/tui/` | Bubble Tea progress UI |
+| `internal/record/` | `download_record` + `subtitle_mapping` |
+| `internal/playliststate/` | `.playlist_state.json` resume |
+| `USAGE.md` | User docs + multi-site examples + vs yt-dlp |
+
+## Platform support
+
+**No domain whitelist.** Pass any URL yt-dlp accepts (~1800 extractors).
+
+```bash
+# YouTube
+./vYtDL download --no-tui -o ./dl -q 1080 "https://www.youtube.com/watch?v=ID"
+
+# Bilibili playlist / multi-P
+./vYtDL download --no-tui -o ./dl --playlist "https://www.bilibili.com/video/BVxxx"
+
+# TikTok / X / 小红书 / Instagram — usually need cookies
+./vYtDL download --no-tui -o ./dl --cookies-from-browser chrome "URL"
+```
+
+## Simplifications vs raw yt-dlp
+
+| Intent | yt-dlp | vYtDL |
+|--------|--------|-------|
+| 1080p | long `-f "bestvideo[height<=1080]+…"` | `-q 1080` |
+| Subs | several flags | default EN+ZH; `--no-subs` off |
+| Output | `-o 'dir/%(title)s.%(ext)s'` | `-o ./dir` |
+| Clip | `--download-sections` | `--start` / `--end` |
+| Playlist | manual | `--playlist` + resume + titled subdir |
+| Progress | text | TUI (default); `--no-tui` plain |
+| Logs | DIY | auto `download_record` + subtitle map |
+
+Cookie / proxy / extractor-args pass through unchanged.
+
+## Extending the CLI
+
+1. Add flag in `cmd/download.go` `init()`
+2. Add field on `internal/downloader.Options`
+3. Wire into `buildArgs()` in `downloader.go`
+4. Update `USAGE.md` + this skill if user-facing
+
+Tests: `go test ./internal/downloader/ ./internal/vtt/ …`
+
+## Common issues
+
+- **yt-dlp not found** → install yt-dlp or set `config.json` / `--yt-dlp-bin`
+- **Bot / age / region** → `--cookies-from-browser chrome` or `--cookies cookies.txt`
+- **YouTube n-challenge** → need JS runtime (deno/node); may need `--extractor-args`
+- **Playlist empty URLs for non-YouTube** → entries need `webpage_url`; do not invent YouTube watch URLs
+
+## Related docs
+
+- `USAGE.md` — full usage
+- `README.md` — overview
+- Monorepo Desktop: `innate-keepthem` + skill `vytdl-dev` (suite, not CLI-only)

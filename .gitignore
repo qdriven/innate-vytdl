@@ -1,0 +1,32 @@
+# Binaries
+/vYtDL
+/vYtDL.exe
+/yt-dl
+/yt-dl.exe
+/dist/
+
+# Download / runtime artifacts
+*.mp4
+*.webm
+*.mkv
+*.m4a
+*.mp3
+*.vtt
+*.srt
+download_record.json
+download_record.csv
+subtitle_mapping.json
+subtitle_mapping.csv
+.playlist_state.json
+urls.txt
+downloads/
+downloads_case/
+
+# Local config overrides (keep example)
+config.local.json
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
