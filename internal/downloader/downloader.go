@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/innate/yt-dl/internal/playliststate"
+	"github.com/innate/yt-dl/internal/ytdlpbin"
 )
 
 // ProgressUpdate is sent over a channel to report download progress.
@@ -60,17 +61,9 @@ func New(opts Options, progress chan<- ProgressUpdate) *Downloader {
 	return &Downloader{opts: opts, progress: progress}
 }
 
-// ytdlpBin returns the yt-dlp binary path (prefers yt-dlp over youtube-dl).
+// ytdlpBin returns the yt-dlp binary path (PATH, embed, or auto-download cache).
 func ytdlpBin() (string, error) {
-	if path := strings.TrimSpace(os.Getenv("YT_DL_BIN")); path != "" {
-		return path, nil
-	}
-	for _, bin := range []string{"yt-dlp", "youtube-dl"} {
-		if path, err := exec.LookPath(bin); err == nil {
-			return path, nil
-		}
-	}
-	return "", fmt.Errorf("neither yt-dlp nor youtube-dl found in PATH; please install yt-dlp")
+	return ytdlpbin.Resolve("")
 }
 
 // buildArgs constructs yt-dlp arguments from options.
@@ -550,8 +543,5 @@ func isYouTubePlaylistEntry(entry playlistEntry) bool {
 }
 
 func (d *Downloader) resolveYTDLPBin() (string, error) {
-	if path := strings.TrimSpace(d.opts.YTDLPBin); path != "" {
-		return path, nil
-	}
-	return ytdlpBin()
+	return ytdlpbin.Resolve(d.opts.YTDLPBin)
 }

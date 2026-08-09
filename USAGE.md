@@ -31,7 +31,40 @@ You can also load config from a custom file path:
 VYTDL_CONFIG=/absolute/path/to/config.json ./vYtDL download --no-tui "VIDEO_URL"
 ```
 
-Before any download starts, the CLI now validates that the configured yt-dlp binary is resolvable and prints install hints when missing.
+Before any download starts, the CLI resolves yt-dlp automatically (see **Bundled yt-dlp** below).
+
+## Bundled yt-dlp
+
+yt-dlp is still a separate executable (cannot be statically linked into Go). vYtDL provisions it in this order:
+
+1. `--yt-dlp-bin` / `config.json` / `YT_DL_BIN`
+2. `yt-dlp` / `youtube-dl` on `PATH`
+3. **Embedded** binary (only if built with `-tags embed_ytdlp`)
+4. Cache under `~/Library/Caches/vYtDL` (macOS) or `~/.cache/vYtDL`
+5. **Auto-download** from GitHub Releases into that cache
+
+```bash
+# Force download/update into cache
+./vYtDL download --install-yt-dlp
+
+# Normal download — uses PATH or auto-downloads if missing
+./vYtDL download --no-tui -o ./downloads "URL"
+
+# Mirror (slow GitHub): full asset URL or prefix ending with /
+export VYTDL_YTDLP_MIRROR="https://ghproxy.net/https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
+```
+
+### Single-file release (embed)
+
+```bash
+./scripts/fetch-ytdlp.sh --embed          # writes internal/ytdlpbin/binaries/yt-dlp.bin
+go build -tags embed_ytdlp -o vYtDL .
+
+# Cross-compile all platforms with embed:
+EMBED=1 ./scripts/build.sh
+```
+
+Embedded builds extract to the cache on first run (no write to the app binary itself).
 
 ## Supported platforms
 

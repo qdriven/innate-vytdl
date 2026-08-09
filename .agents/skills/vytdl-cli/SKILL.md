@@ -33,14 +33,27 @@ Do **not** use this skill for Tauri Desktop / Web UI (those stay in `innate-keep
 cd /Users/patrick/innate/projects/vYtDL   # or clone path
 go build -o vYtDL .
 ./scripts/build.sh                        # cross-compile → dist/
+EMBED=1 ./scripts/build.sh                # cross-compile with yt-dlp embedded
 
 ./vYtDL download --help
+./vYtDL download --install-yt-dlp         # fetch yt-dlp into cache
 ./vYtDL download --no-tui -o ./downloads -q 1080 "URL"
 ```
 
-Config: `config.json` / `VYTDL_CONFIG` / `--yt-dlp-bin`. Empty `yt_dlp_bin` → PATH lookup.
+### yt-dlp provisioning
 
-Requires: Go 1.24+, yt-dlp on PATH, optional FFmpeg.
+Order: `--yt-dlp-bin` / config / `YT_DL_BIN` → PATH → **embed** (`-tags embed_ytdlp`) → cache → GitHub download.
+
+```bash
+./scripts/fetch-ytdlp.sh --embed
+go build -tags embed_ytdlp -o vYtDL .
+```
+
+Slow GitHub: `export VYTDL_YTDLP_MIRROR='https://ghproxy.net/https://github.com/yt-dlp/yt-dlp/releases/latest/download/'`
+
+Config: `config.json` / `VYTDL_CONFIG` / `--yt-dlp-bin`. Empty `yt_dlp_bin` → auto resolve.
+
+Requires: Go 1.24+, optional system yt-dlp (otherwise auto-download/embed), optional FFmpeg.
 
 ## Architecture
 
@@ -55,6 +68,7 @@ main.go → cmd.Execute()
 | `cmd/download.go` | Flags, concurrency, orchestration |
 | `cmd/analyze.go` | VTT → text/markdown |
 | `internal/downloader/` | Args build, progress parse, playlist resume |
+| `internal/ytdlpbin/` | Resolve/install yt-dlp (PATH, embed, cache download) |
 | `internal/tui/` | Bubble Tea progress UI |
 | `internal/record/` | `download_record` + `subtitle_mapping` |
 | `internal/playliststate/` | `.playlist_state.json` resume |
@@ -100,7 +114,8 @@ Tests: `go test ./internal/downloader/ ./internal/vtt/ …`
 
 ## Common issues
 
-- **yt-dlp not found** → install yt-dlp or set `config.json` / `--yt-dlp-bin`
+- **yt-dlp not found** → `./vYtDL download --install-yt-dlp`, or embed build, or set `--yt-dlp-bin`
+- **GitHub download slow** → set `VYTDL_YTDLP_MIRROR` (see Build section)
 - **Bot / age / region** → `--cookies-from-browser chrome` or `--cookies cookies.txt`
 - **YouTube n-challenge** → need JS runtime (deno/node); may need `--extractor-args`
 - **Playlist empty URLs for non-YouTube** → entries need `webpage_url`; do not invent YouTube watch URLs

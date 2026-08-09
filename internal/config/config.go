@@ -15,7 +15,7 @@ type Config struct {
 // Default returns the built-in defaults.
 func Default() Config {
 	return Config{
-		YTDLPBin: "/Applications/ServBay/package/python/3.14/3.14.0b1/Python.framework/Versions/3.14/bin/yt-dlp",
+		YTDLPBin: "", // empty → PATH, then embedded/auto-download
 	}
 }
 

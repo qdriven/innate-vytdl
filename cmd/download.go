@@ -3,8 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"os/exec"
-	"runtime"
 	"sync"
 	"strings"
 
@@ -14,6 +12,7 @@ import (
 	"github.com/innate/yt-dl/internal/downloader"
 	"github.com/innate/yt-dl/internal/record"
 	"github.com/innate/yt-dl/internal/tui"
+	"github.com/innate/yt-dl/internal/ytdlpbin"
 )
 
 var (
@@ -41,6 +40,7 @@ var (
 	flagForceIPv4   bool
 	flagResetState  bool
 	flagConcurrency int
+	flagInstallYTDLP bool
 )
 
 func init() {
@@ -95,6 +95,8 @@ func init() {
 		"Discard saved playlist state and start the playlist from the beginning")
 	dl.Flags().IntVarP(&flagConcurrency, "concurrency", "j", 1,
 		"Maximum number of concurrent downloads (1 = sequential)")
+	dl.Flags().BoolVar(&flagInstallYTDLP, "install-yt-dlp", false,
+		"Download/update yt-dlp into the local cache (~/.cache/vYtDL) and exit")
 
 	rootCmd.AddCommand(dl)
 }
@@ -103,18 +105,34 @@ var downloadCmd = &cobra.Command{
 	Use:     "download [flags] <url> [url…]",
 	Aliases: []string{"dl", "get"},
 	Short:   "Download video(s) from any yt-dlp-supported site",
-	Args:    cobra.MinimumNArgs(1),
-	RunE:    runDownload,
+	Args: func(cmd *cobra.Command, args []string) error {
+		if flagInstallYTDLP {
+			return nil
+		}
+		return cobra.MinimumNArgs(1)(cmd, args)
+	},
+	RunE: runDownload,
 }
 
 func runDownload(cmd *cobra.Command, args []string) error {
+	if flagInstallYTDLP {
+		path, err := ytdlpbin.InstallOrUpdate()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("yt-dlp installed at %s\n", path)
+		return nil
+	}
+
 	logFormat := strings.ToLower(strings.TrimSpace(flagLogFormat))
 	if logFormat != "json" && logFormat != "csv" {
 		return fmt.Errorf("unsupported log format %q: use json or csv", flagLogFormat)
 	}
-	if err := validateYTDLPAvailability(flagYTDLPBin); err != nil {
+	resolved, err := validateYTDLPAvailability(flagYTDLPBin)
+	if err != nil {
 		return err
 	}
+	flagYTDLPBin = resolved
 
 	// Resolve output directory
 	outDir := flagOutputDir
@@ -296,22 +314,11 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func validateYTDLPAvailability(bin string) error {
-	candidate := strings.TrimSpace(bin)
-	if candidate == "" {
-		candidate = "yt-dlp"
+func validateYTDLPAvailability(bin string) (string, error) {
+	path, err := ytdlpbin.Resolve(bin)
+	if err != nil {
+		return "", fmt.Errorf("%v\nBuilds with -tags embed_ytdlp ship an embedded binary; otherwise PATH or auto-download is used", err)
 	}
-	if _, err := exec.LookPath(candidate); err == nil {
-		return nil
-	}
-
-	hint := "Install yt-dlp and make sure it is in PATH.\n- pipx install yt-dlp\n- or pip install -U yt-dlp"
-	switch runtime.GOOS {
-	case "darwin":
-		hint = "Install yt-dlp and make sure it is in PATH.\n- brew install yt-dlp\n- or pipx install yt-dlp"
-	case "windows":
-		hint = "Install yt-dlp and make sure it is in PATH.\n- winget install yt-dlp.yt-dlp\n- or choco install yt-dlp"
-	}
-
-	return fmt.Errorf("yt-dlp binary not found: %q\n%s\nYou can also set --yt-dlp-bin or vYtDL/config.json with the full path", candidate, hint)
+	fmt.Fprintf(os.Stderr, "Using yt-dlp: %s\n", path)
+	return path, nil
 }

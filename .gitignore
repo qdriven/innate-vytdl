@@ -1,8 +1,8 @@
 # Binaries
 /vYtDL
 /vYtDL.exe
+/vYtDL-embedded
 /yt-dl
-/yt-dl.exe
 /dist/
 
 # Download / runtime artifacts
@@ -22,7 +22,7 @@ urls.txt
 downloads/
 downloads_case/
 
-# Local config overrides (keep example)
+# Local config overrides
 config.local.json
 
 # Editor / OS
