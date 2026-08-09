@@ -1,19 +1,91 @@
-# vYtDL CLI (monorepo working copy)
+# vYtDL CLI
 
-Prefer the standalone repo: **`/Users/patrick/innate/projects/vYtDL`**
+Go CLI / TUI wrapper around [yt-dlp](https://github.com/yt-dlp/yt-dlp) for downloading videos from **1800+ sites** (YouTube, Bilibili, TikTok, X/Twitter, Instagram, Vimeo, Twitch, 小红书, …).
 
-## Bundled yt-dlp
+This is the **standalone CLI** repository (module `github.com/innate/yt-dl`). Desktop / Web live in `innate-keepthem`.
+
+## Requirements
+
+- Go **1.24+**
+- Optional: system [yt-dlp](https://github.com/yt-dlp/yt-dlp) (otherwise auto-download or embed)
+- Optional: FFmpeg (time-range clips / merge)
+
+## Build
 
 ```bash
+git clone <this-repo> vYtDL
+cd vYtDL
 go build -o vYtDL .
-./vYtDL download --install-yt-dlp          # cache under ~/Library/Caches/vYtDL
 
-# Single-file with embedded yt-dlp:
+# Cross-compile
+./scripts/build.sh
+
+# Single-file release with yt-dlp embedded
 ./scripts/fetch-ytdlp.sh --embed
 go build -tags embed_ytdlp -o vYtDL .
-EMBED=1 ./scripts/build.sh                 # all platforms
+# or: EMBED=1 ./scripts/build.sh
 ```
 
-Resolve order: `--yt-dlp-bin` → PATH → embed → cache → GitHub download.
+Copy `config.example.json` → `config.json` only if you need a fixed path:
 
-See [USAGE.md](./USAGE.md) and [MOVED.md](./MOVED.md).
+```json
+{ "yt_dlp_bin": "/opt/homebrew/bin/yt-dlp" }
+```
+
+Empty `yt_dlp_bin` means: PATH → embed → cache → GitHub download.
+
+## Quick usage
+
+```bash
+# Install/update yt-dlp into local cache (no system install needed)
+./vYtDL download --install-yt-dlp
+
+./vYtDL download --no-tui -o ./downloads -q 1080 \
+  "https://www.youtube.com/watch?v=VIDEO_ID"
+
+./vYtDL download --no-tui -o ./downloads --playlist \
+  "https://www.bilibili.com/video/BVxxxxxx"
+
+./vYtDL download --no-tui -o ./downloads \
+  --cookies-from-browser chrome \
+  "https://www.tiktok.com/@user/video/123"
+```
+
+Slow GitHub downloads:
+
+```bash
+export VYTDL_YTDLP_MIRROR="https://ghproxy.net/https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
+```
+
+Full guide: [USAGE.md](./USAGE.md) (multi-platform examples + vs raw yt-dlp).
+
+## vs raw yt-dlp
+
+Same engine. vYtDL simplifies everyday flags (`-q 1080`, default EN/ZH subs, `-o` dir, playlist resume, TUI, download records) and can provision yt-dlp for you.
+
+## Agent skill
+
+```
+.agents/skills/vytdl-cli/SKILL.md
+```
+
+```bash
+mkdir -p ~/.cursor/skills
+ln -sfn "$(pwd)/.agents/skills/vytdl-cli" ~/.cursor/skills/vytdl-cli
+```
+
+## Layout
+
+```
+cmd/                 # Cobra commands (download, analyze)
+internal/downloader/ # yt-dlp spawn + progress
+internal/ytdlpbin/   # PATH / embed / auto-download resolver
+internal/tui/        # Bubble Tea UI
+internal/record/     # download_record / subtitle_mapping
+internal/vtt/        # VTT parse
+scripts/             # build + fetch-ytdlp helpers
+```
+
+## License
+
+Add a LICENSE file when publishing. Code follows the parent project conventions.
