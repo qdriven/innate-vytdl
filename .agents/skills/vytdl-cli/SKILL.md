@@ -15,6 +15,7 @@ Standalone Go CLI that wraps **yt-dlp** as a subprocess. Not a separate download
 ## Repo
 
 Canonical path (local): `/Users/patrick/innate/projects/vYtDL`  
+GitHub: https://github.com/qdriven/innate-vytdl  
 Module: `github.com/innate/yt-dl`
 
 ## When to use this skill

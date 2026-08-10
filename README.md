@@ -13,8 +13,8 @@ This is the **standalone CLI** repository (module `github.com/innate/yt-dl`). De
 ## Build
 
 ```bash
-git clone <this-repo> vYtDL
-cd vYtDL
+git clone https://github.com/qdriven/innate-vytdl.git
+cd innate-vytdl
 go build -o vYtDL .
 
 # Cross-compile
