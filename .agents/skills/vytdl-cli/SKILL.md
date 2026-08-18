@@ -1,7 +1,7 @@
 ---
 name: vytdl-cli
 description: |
-  Build, run, and extend the vYtDL Go CLI (yt-dl wrapper). Use when downloading
+  Build, run, and extend the vYtDL Go CLI (yt-dlp wrapper). Use when downloading
   videos via CLI, adding download flags, playlist resume, TUI, VTT analyze,
   multi-site yt-dlp usage (YouTube/Bilibili/TikTok/X/小红书), or comparing to
   raw yt-dlp. Triggers: vYtDL, yt-dl CLI, go build vYtDL, --cookies-from-browser,
@@ -14,9 +14,13 @@ Standalone Go CLI that wraps **yt-dlp** as a subprocess. Not a separate download
 
 ## Repo
 
-Canonical path (local): `/Users/patrick/innate/projects/vYtDL`  
-GitHub: https://github.com/qdriven/innate-vytdl  
-Module: `github.com/innate/yt-dl`
+| 位置 | 路径 |
+|---|---|
+| GitHub（规范仓库） | https://github.com/qdriven/innate-vytdl |
+| 本地工作副本 | `/Users/patrick/innate/innative-works/projects/innate-keepthem/vYtDL-standalone` |
+| monorepo 镜像 | `/Users/patrick/innate/innative-works/projects/innate-keepthem/tools/vytdl-cli` |
+
+Module: `github.com/innate/yt-dl`。两处本地副本需保持 Go 源码一致；功能改动优先在 GitHub 仓库开发。
 
 ## When to use this skill
 
@@ -26,14 +30,14 @@ Module: `github.com/innate/yt-dl`
 - Explain differences vs raw `yt-dlp`
 - VTT subtitle analyze subcommand
 
-Do **not** use this skill for Tauri Desktop / Web UI (those stay in `innate-keepthem`).
+Do **not** use this skill for Tauri Desktop / Web UI (those stay in `innate-keepthem`, skill `vytdl-dev`).
 
 ## Build & run
 
 ```bash
-cd /Users/patrick/innate/projects/vYtDL   # or clone path
+cd /Users/patrick/innate/innative-works/projects/innate-keepthem/vYtDL-standalone
 go build -o vYtDL .
-./scripts/build.sh                        # cross-compile → dist/
+./scripts/build.sh                        # cross-compile -> dist/
 EMBED=1 ./scripts/build.sh                # cross-compile with yt-dlp embedded
 
 ./vYtDL download --help
@@ -43,7 +47,7 @@ EMBED=1 ./scripts/build.sh                # cross-compile with yt-dlp embedded
 
 ### yt-dlp provisioning
 
-Order: `--yt-dlp-bin` / config / `YT_DL_BIN` → PATH → **embed** (`-tags embed_ytdlp`) → cache → GitHub download.
+Order: `--yt-dlp-bin` / config / `YT_DL_BIN` -> PATH -> **embed** (`-tags embed_ytdlp`) -> cache -> GitHub download.
 
 ```bash
 ./scripts/fetch-ytdlp.sh --embed
@@ -52,22 +56,22 @@ go build -tags embed_ytdlp -o vYtDL .
 
 Slow GitHub: `export VYTDL_YTDLP_MIRROR='https://ghproxy.net/https://github.com/yt-dlp/yt-dlp/releases/latest/download/'`
 
-Config: `config.json` / `VYTDL_CONFIG` / `--yt-dlp-bin`. Empty `yt_dlp_bin` → auto resolve.
+Config: `config.json` / `VYTDL_CONFIG` / `--yt-dlp-bin`. Empty `yt_dlp_bin` -> auto resolve.
 
 Requires: Go 1.24+, optional system yt-dlp (otherwise auto-download/embed), optional FFmpeg.
 
 ## Architecture
 
 ```
-main.go → cmd.Execute()
-  download  → internal/downloader (yt-dlp subprocess) + optional TUI
-  analyze   → internal/vtt
+main.go -> cmd.Execute()
+  download  -> internal/downloader (yt-dlp subprocess) + optional TUI
+  analyze   -> internal/vtt
 ```
 
 | Path | Role |
 |------|------|
 | `cmd/download.go` | Flags, concurrency, orchestration |
-| `cmd/analyze.go` | VTT → text/markdown |
+| `cmd/analyze.go` | VTT -> text/markdown |
 | `internal/downloader/` | Args build, progress parse, playlist resume |
 | `internal/ytdlpbin/` | Resolve/install yt-dlp (PATH, embed, cache download) |
 | `internal/tui/` | Bubble Tea progress UI |
@@ -86,7 +90,7 @@ main.go → cmd.Execute()
 # Bilibili playlist / multi-P
 ./vYtDL download --no-tui -o ./dl --playlist "https://www.bilibili.com/video/BVxxx"
 
-# TikTok / X / 小红书 / Instagram — usually need cookies
+# TikTok / X / 小红书 / Instagram - usually need cookies
 ./vYtDL download --no-tui -o ./dl --cookies-from-browser chrome "URL"
 ```
 
@@ -110,19 +114,24 @@ Cookie / proxy / extractor-args pass through unchanged.
 2. Add field on `internal/downloader.Options`
 3. Wire into `buildArgs()` in `downloader.go`
 4. Update `USAGE.md` + this skill if user-facing
+5. 双向同步：改动回传另一份本地副本（standalone <-> monorepo tools/vytdl-cli）
 
 Tests: `go test ./internal/downloader/ ./internal/vtt/ …`
 
 ## Common issues
 
-- **yt-dlp not found** → `./vYtDL download --install-yt-dlp`, or embed build, or set `--yt-dlp-bin`
-- **GitHub download slow** → set `VYTDL_YTDLP_MIRROR` (see Build section)
-- **Bot / age / region** → `--cookies-from-browser chrome` or `--cookies cookies.txt`
-- **YouTube n-challenge** → need JS runtime (deno/node); may need `--extractor-args`
-- **Playlist empty URLs for non-YouTube** → entries need `webpage_url`; do not invent YouTube watch URLs
+- **yt-dlp not found** -> `./vYtDL download --install-yt-dlp`, or embed build, or set `--yt-dlp-bin`
+- **GitHub download slow** -> set `VYTDL_YTDLP_MIRROR` (see Build section)
+- **Bot / age / region** -> `--cookies-from-browser chrome` or `--cookies cookies.txt`
+- **YouTube n-challenge** -> need JS runtime (deno/node); may need `--extractor-args`
+- **Playlist empty URLs for non-YouTube** -> entries need `webpage_url`; do not invent YouTube watch URLs
 
 ## Related docs
 
-- `USAGE.md` — full usage
-- `README.md` — overview
+- `USAGE.md` - full usage
+- `README.md` - overview
 - Monorepo Desktop: `innate-keepthem` + skill `vytdl-dev` (suite, not CLI-only)
+- 功能清单与验证：`innate-keepthem/docs/FEATURE-CHECKLIST.md` 第 1 节
+
+---
+*本 skill 由 innate-keepthem 仓库维护并分发；规范源：`vYtDL-standalone/.agents/skills/vytdl-cli/`。安装位置：~/.cursor/skills、~/.codex/skills、~/.trae/skills、~/.workbuddy/skills（复制安装，更新以规范源为准）。*
