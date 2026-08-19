@@ -30,3 +30,4 @@ config.local.json
 .idea/
 .vscode/
 *.swp
+.task/

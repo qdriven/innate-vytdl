@@ -1,0 +1,89 @@
+version: "3"
+
+# This repo is a standalone module (same path as the monorepo copy).
+# Building inside the parent go.work would fail, so ignore the workspace.
+env:
+  GOWORK: "off"
+
+vars:
+  APP_NAME: vYtDL
+  DIST_DIR: ./dist
+  EMBED_BIN: internal/ytdlpbin/binaries/yt-dlp.bin
+
+tasks:
+  # ── Default ──────────────────────────────────────────────
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  # ── Build ────────────────────────────────────────────────
+  build:
+    desc: Build the CLI for the current platform (host binary ./vYtDL)
+    cmds:
+      - go build -trimpath -ldflags "-s -w" -o {{.APP_NAME}} .
+    sources:
+      - "**/*.go"
+    generates:
+      - "{{.APP_NAME}}"
+
+  build:all:
+    desc: Cross-compile for macOS/Linux/Windows (uses scripts/build.sh)
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - ./scripts/build.sh {{.DIST_DIR}} {{.APP_NAME}}
+    sources:
+      - "**/*.go"
+
+  build:embed:
+    desc: Single-file release with yt-dlp embedded (-tags embed_ytdlp)
+    deps: [fetch-ytdlp:embed]
+    cmds:
+      - go build -trimpath -ldflags "-s -w" -tags embed_ytdlp -o {{.APP_NAME}} .
+    generates:
+      - "{{.APP_NAME}}"
+
+  build:all:embed:
+    desc: Cross-compile all targets with yt-dlp embedded (EMBED=1 ./scripts/build.sh)
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - EMBED=1 ./scripts/build.sh {{.DIST_DIR}} {{.APP_NAME}}
+    sources:
+      - "**/*.go"
+
+  # ── yt-dlp provisioning ──────────────────────────────────
+  fetch-ytdlp:
+    desc: Download yt-dlp for the current platform to the user cache
+    cmds:
+      - ./scripts/fetch-ytdlp.sh
+
+  fetch-ytdlp:embed:
+    desc: Download yt-dlp for the current platform into internal/ytdlpbin/binaries/yt-dlp.bin
+    cmds:
+      - ./scripts/fetch-ytdlp.sh --embed
+    generates:
+      - "{{.EMBED_BIN}}"
+
+  # ── Test / Run / Install ─────────────────────────────────
+  test:
+    desc: Run Go tests
+    cmds:
+      - go test ./...
+
+  run:
+    desc: Run the CLI (pass args via CLI_ARGS)
+    cmds:
+      - go run . {{.CLI_ARGS | default "--help"}}
+
+  install:
+    desc: Install the CLI to $GOPATH/bin
+    cmds:
+      - go install -trimpath -ldflags "-s -w" .
+
+  # ── Clean ────────────────────────────────────────────────
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -f {{.APP_NAME}}
+      - rm -rf {{.DIST_DIR}}
+      - echo "Cleaned."
