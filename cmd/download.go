@@ -34,12 +34,13 @@ var (
 	flagCookiesFile string
 	flagCookiesFrom string
 	flagUserAgent   string
-	flagExtractor   string
-	flagRetries     string
-	flagTimeout     string
-	flagForceIPv4   bool
-	flagResetState  bool
-	flagConcurrency int
+	flagExtractor    string
+	flagJSRuntimes   string
+	flagRetries      string
+	flagTimeout      string
+	flagForceIPv4    bool
+	flagResetState   bool
+	flagConcurrency  int
 	flagInstallYTDLP bool
 )
 
@@ -85,6 +86,8 @@ func init() {
 		"Custom User-Agent string passed through to yt-dlp")
 	dl.Flags().StringVar(&flagExtractor, "extractor-args", "",
 		"Extractor args passed through to yt-dlp, e.g. youtube:player_client=web,android")
+	dl.Flags().StringVar(&flagJSRuntimes, "js-runtimes", "node",
+		"JS runtime(s) for YouTube n-challenge (yt-dlp --js-runtimes), e.g. node or deno")
 	dl.Flags().StringVar(&flagRetries, "retries", "10",
 		"Retry count passed through to yt-dlp")
 	dl.Flags().StringVar(&flagTimeout, "socket-timeout", "30",
@@ -174,6 +177,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		CookiesFromBrowser: flagCookiesFrom,
 		UserAgent:          flagUserAgent,
 		ExtractorArgs:      flagExtractor,
+		JSRuntimes:         flagJSRuntimes,
 		Retries:            flagRetries,
 		SocketTimeout:      flagTimeout,
 		ForceIPv4:          flagForceIPv4,

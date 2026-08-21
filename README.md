@@ -17,13 +17,20 @@ git clone https://github.com/qdriven/innate-vytdl.git
 cd innate-vytdl
 go build -o vYtDL .
 
-# Cross-compile
+# Cross-compile all platforms (macOS / Linux / Windows)
 ./scripts/build.sh
+# → dist/vYtDL-darwin-arm64, …, dist/vYtDL-windows-amd64.exe, …
+
+# Windows only (amd64 + arm64)
+./scripts/build.sh          # all targets
+ONLY=windows ./scripts/build.sh
+# or: task build:windows
+# or (PowerShell): .\scripts\build.ps1 -Only windows
 
 # Single-file release with yt-dlp embedded
 ./scripts/fetch-ytdlp.sh --embed
 go build -tags embed_ytdlp -o vYtDL .
-# or: EMBED=1 ./scripts/build.sh
+# or: EMBED=1 ONLY=windows ./scripts/build.sh
 ```
 
 Copy `config.example.json` → `config.json` only if you need a fixed path:

@@ -59,6 +59,10 @@ type Options struct {
 	// ExtractorArgs forwards extractor-specific options, e.g. youtube:player_client=web,android.
 	ExtractorArgs string
 
+	// JSRuntimes selects JS runtimes for YouTube n-challenge solving, e.g. "node" or "deno".
+	// Passed through to yt-dlp as --js-runtimes. Empty skips the flag (yt-dlp default: deno).
+	JSRuntimes string
+
 	// Retries overrides yt-dlp retry count. Empty uses yt-dlp defaults.
 	Retries string
 

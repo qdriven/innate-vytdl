@@ -35,6 +35,41 @@ tasks:
     sources:
       - "**/*.go"
 
+  build:windows:
+    desc: Cross-compile Windows amd64 + arm64 (.exe → dist/)
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - ONLY=windows ./scripts/build.sh {{.DIST_DIR}} {{.APP_NAME}}
+    sources:
+      - "**/*.go"
+    generates:
+      - "{{.DIST_DIR}}/{{.APP_NAME}}-windows-amd64.exe"
+      - "{{.DIST_DIR}}/{{.APP_NAME}}-windows-arm64.exe"
+
+  build:windows:amd64:
+    desc: Cross-compile Windows amd64 only
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - ONLY=windows/amd64 ./scripts/build.sh {{.DIST_DIR}} {{.APP_NAME}}
+    generates:
+      - "{{.DIST_DIR}}/{{.APP_NAME}}-windows-amd64.exe"
+
+  build:windows:arm64:
+    desc: Cross-compile Windows arm64 only
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - ONLY=windows/arm64 ./scripts/build.sh {{.DIST_DIR}} {{.APP_NAME}}
+    generates:
+      - "{{.DIST_DIR}}/{{.APP_NAME}}-windows-arm64.exe"
+
+  build:windows:embed:
+    desc: Cross-compile Windows with yt-dlp embedded
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - EMBED=1 ONLY=windows ./scripts/build.sh {{.DIST_DIR}} {{.APP_NAME}}
+    sources:
+      - "**/*.go"
+
   build:embed:
     desc: Single-file release with yt-dlp embedded (-tags embed_ytdlp)
     deps: [fetch-ytdlp:embed]

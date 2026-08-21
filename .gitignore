@@ -2,8 +2,11 @@
 /vYtDL
 /vYtDL.exe
 /vYtDL-embedded
+/vYtDL-*
 /yt-dl
 /dist/
+.bin/
+*.exe
 
 # Download / runtime artifacts
 *.mp4
@@ -11,8 +14,14 @@
 *.mkv
 *.m4a
 *.mp3
+*.opus
+*.flac
 *.vtt
 *.srt
+*.ass
+*.part
+*.ytdl
+*.temp
 download_record.json
 download_record.csv
 subtitle_mapping.json

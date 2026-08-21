@@ -387,7 +387,7 @@ yt-dlp --cookies-from-browser chrome --js-runtimes node "URL"
 brew install deno
 ```
 
-The vYtDL CLI does not yet pass `--js-runtimes` through; use yt-dlp directly for now when the `n` challenge appears.
+vYtDL defaults to `--js-runtimes node`. Override with `--js-runtimes deno` (or another runtime) if needed.
 
 Supported passthrough flags:
 
@@ -397,6 +397,7 @@ Supported passthrough flags:
 - `--cookies-from-browser`
 - `--user-agent`
 - `--extractor-args`
+- `--js-runtimes`
 - `--retries`
 - `--socket-timeout`
 - `--force-ipv4`

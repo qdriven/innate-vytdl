@@ -149,6 +149,9 @@ func (d *Downloader) buildArgs(url, outDir string) []string {
 	if extractorArgs := strings.TrimSpace(o.ExtractorArgs); extractorArgs != "" {
 		args = append(args, "--extractor-args", extractorArgs)
 	}
+	if jsRuntimes := strings.TrimSpace(o.JSRuntimes); jsRuntimes != "" {
+		args = append(args, "--js-runtimes", jsRuntimes)
+	}
 
 	// Progress output in newline-delimited form for parsing
 	args = append(args, "--newline", "--progress")
