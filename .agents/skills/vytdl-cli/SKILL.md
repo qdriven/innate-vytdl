@@ -17,8 +17,8 @@ Standalone Go CLI that wraps **yt-dlp** as a subprocess. Not a separate download
 | 位置 | 路径 |
 |---|---|
 | GitHub（规范仓库） | https://github.com/qdriven/innate-vytdl |
-| 本地工作副本 | `/Users/patrick/innate/innative-works/projects/innate-keepthem/vYtDL-standalone` |
-| monorepo 镜像 | `/Users/patrick/innate/innative-works/projects/innate-keepthem/tools/vytdl-cli` |
+| 本地工作副本 | `/Users/patrick/innate/innate-works/projects/innate-keepthem/vYtDL-standalone` |
+| canonical local checkout `vYtDL-standalone/` (old `tools/vytdl-cli` removed)
 
 Module: `github.com/innate/yt-dl`。两处本地副本需保持 Go 源码一致；功能改动优先在 GitHub 仓库开发。
 
@@ -35,7 +35,7 @@ Do **not** use this skill for Tauri Desktop / Web UI (those stay in `innate-keep
 ## Build & run
 
 ```bash
-cd /Users/patrick/innate/innative-works/projects/innate-keepthem/vYtDL-standalone
+cd /Users/patrick/innate/innate-works/projects/innate-keepthem/vYtDL-standalone
 go build -o vYtDL .
 ./scripts/build.sh                        # cross-compile -> dist/
 EMBED=1 ./scripts/build.sh                # cross-compile with yt-dlp embedded
@@ -114,7 +114,7 @@ Cookie / proxy / extractor-args pass through unchanged.
 2. Add field on `internal/downloader.Options`
 3. Wire into `buildArgs()` in `downloader.go`
 4. Update `USAGE.md` + this skill if user-facing
-5. 双向同步：改动回传另一份本地副本（standalone <-> monorepo tools/vytdl-cli）
+5. 双向同步：改动回传另一份本地副本（standalone <-> monorepo vYtDL-standalone）
 
 Tests: `go test ./internal/downloader/ ./internal/vtt/ …`
 

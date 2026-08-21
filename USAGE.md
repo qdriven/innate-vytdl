@@ -1,417 +1,436 @@
 # vYtDL Usage
 
-## Quick Start
+Go CLI / TUI wrapper around [yt-dlp](https://github.com/yt-dlp/yt-dlp). vYtDL does **not** reimplement downloaders — it spawns yt-dlp, simplifies everyday flags, and adds playlist resume, TUI progress, and download records.
 
-Build the binary:
+**Full guide for YouTube and Bilibili** is below. Other sites (TikTok, X, 小红书, …) use the same CLI; see [Multi-site tips](#other-sites).
 
-```bash
-cd vYtDL
-go build -o vYtDL .
-```
+---
 
-The default `yt-dlp` binary path is configured in `vYtDL/config.json`:
-
-```json
-{
-  "yt_dlp_bin": "/Applications/ServBay/package/python/3.14/3.14.0b1/Python.framework/Versions/3.14/bin/yt-dlp"
-}
-```
-
-If your local `yt-dlp` is somewhere else, edit `config.json`. You only need `--yt-dlp-bin` when you want to override that config for one command.
-
-Common `yt_dlp_bin` values:
-
-- macOS: `/opt/homebrew/bin/yt-dlp` or `/usr/local/bin/yt-dlp`
-- Linux: `/usr/bin/yt-dlp` or `/usr/local/bin/yt-dlp`
-- Windows 11: `C:\\Users\\<you>\\AppData\\Local\\Microsoft\\WinGet\\Links\\yt-dlp.exe`
-
-You can also load config from a custom file path:
+## Quick start
 
 ```bash
-VYTDL_CONFIG=/absolute/path/to/config.json ./vYtDL download --no-tui "VIDEO_URL"
+cd vYtDL-standalone   # or tools/vytdl-cli in the monorepo
+go build -o vYtDL .  # GOWORK=off if inside a go.work
+
+./vYtDL download --install-yt-dlp   # optional: cache a fresh yt-dlp
+
+# YouTube single video (1080p, EN+ZH subs by default)
+./vYtDL download --no-tui -o ./downloads -q 1080 \
+  --cookies-from-browser chrome \
+  "https://www.youtube.com/watch?v=VIDEO_ID"
+
+# Bilibili multi-P / collection
+./vYtDL download --no-tui -o ./downloads -q 1080 --playlist \
+  --cookies-from-browser chrome \
+  "https://www.bilibili.com/video/BVxxxxxx"
 ```
 
-Before any download starts, the CLI resolves yt-dlp automatically (see **Bundled yt-dlp** below).
+Defaults worth knowing:
 
-## Bundled yt-dlp
+| Default | Value |
+|---------|--------|
+| Container | `-f mp4` |
+| Subtitles | EN + ZH, including auto-subs |
+| JS runtime (YouTube) | `--js-runtimes node` |
+| Concurrency | `-j 1` (sequential) |
+| Progress | TUI (use `--no-tui` for plain text) |
+| Records | `download_record.json` + `subtitle_mapping.json` |
 
-yt-dlp is still a separate executable (cannot be statically linked into Go). vYtDL provisions it in this order:
+---
 
-1. `--yt-dlp-bin` / `config.json` / `YT_DL_BIN`
+## How it works (implementation)
+
+```
+./vYtDL download [flags] URL…
+        │
+        ▼
+  cmd/download.go          parse flags → downloader.Options
+        │
+        ▼
+  internal/ytdlpbin        resolve yt-dlp binary
+        │
+        ▼
+  internal/downloader      buildArgs() → exec yt-dlp
+        │                    parse --newline progress
+        │                    optional playliststate resume
+        ▼
+  internal/record         append download_record + subtitle_mapping
+  internal/tui (optional)  Bubble Tea progress
+```
+
+### Flag → yt-dlp mapping
+
+| vYtDL flag | yt-dlp equivalent (approx.) |
+|-----------|------------------------------|
+| `-q 1080` | `-f "bestvideo[height<=1080]+bestaudio/best[height<=1080]"` |
+| `-f mp4` | `--merge-output-format mp4` |
+| `-o ./dir` | `-o "./dir/%(title)s.%(ext)s"` |
+| (default subs) | `--write-subs --write-auto-subs --sub-langs en,zh` |
+| `--start` / `--end` | `--download-sections "*START-END" --force-keyframes-at-cuts` |
+| `--no-playlist` (default) | `--no-playlist` |
+| `--playlist` | playlist mode + titled subdir + `.playlist_state.json` |
+| `--cookies-from-browser` | same |
+| `--cookies` | same |
+| `--proxy` | same |
+| `--extractor-args` | same |
+| `--js-runtimes node` | same (default in vYtDL) |
+| `--retries` / `--socket-timeout` / `--force-ipv4` | same |
+
+Code path: `cmd/download.go` → `internal/downloader/options.go` → `buildArgs()` in `internal/downloader/downloader.go`.
+
+### yt-dlp binary resolution
+
+Order (`internal/ytdlpbin`):
+
+1. `--yt-dlp-bin` / `config.json` `yt_dlp_bin` / `YT_DL_BIN`
 2. `yt-dlp` / `youtube-dl` on `PATH`
-3. **Embedded** binary (only if built with `-tags embed_ytdlp`)
-4. Cache under `~/Library/Caches/vYtDL` (macOS) or `~/.cache/vYtDL`
-5. **Auto-download** from GitHub Releases into that cache
+3. Embedded binary (`-tags embed_ytdlp`)
+4. Cache: `~/Library/Caches/vYtDL` (macOS) or `~/.cache/vYtDL`
+5. GitHub Releases auto-download
 
 ```bash
-# Force download/update into cache
 ./vYtDL download --install-yt-dlp
-
-# Normal download — uses PATH or auto-downloads if missing
-./vYtDL download --no-tui -o ./downloads "URL"
-
-# Mirror (slow GitHub): full asset URL or prefix ending with /
 export VYTDL_YTDLP_MIRROR="https://ghproxy.net/https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
 ```
 
-### Single-file release (embed)
+Empty `yt_dlp_bin` in config means “auto-resolve”. Copy `config.example.json` only when you need a fixed path:
 
-```bash
-./scripts/fetch-ytdlp.sh --embed          # writes internal/ytdlpbin/binaries/yt-dlp.bin
-go build -tags embed_ytdlp -o vYtDL .
-
-# Cross-compile all platforms with embed:
-EMBED=1 ./scripts/build.sh
+```json
+{ "yt_dlp_bin": "/opt/homebrew/bin/yt-dlp" }
 ```
 
-Embedded builds extract to the cache on first run (no write to the app binary itself).
+---
 
-## Supported platforms
+## YouTube
 
-The CLI does **not** whitelist domains. Any URL yt-dlp can extract works (1800+ sites).
+### URL shapes
 
-### Multi-platform examples
+| Kind | Example |
+|------|---------|
+| Watch | `https://www.youtube.com/watch?v=VIDEO_ID` |
+| Short URL | `https://youtu.be/VIDEO_ID` |
+| Shorts | `https://www.youtube.com/shorts/VIDEO_ID` |
+| Playlist | `https://www.youtube.com/playlist?list=PLxxxx` |
+| Mix / radio | `list=RD…` — prefer default `--no-playlist` for a single watch URL |
+
+Escaped shell URLs like `watch\?v\=ID` are normalized automatically.
+
+### Single video
 
 ```bash
-# YouTube — 1080p + EN/ZH 字幕（默认开字幕）
+# Best quality under 1080p, EN+ZH subs, plain progress
 ./vYtDL download --no-tui -o ./downloads -q 1080 \
-  "https://www.youtube.com/watch?v=VIDEO_ID"
-
-# Bilibili — 合集/多 P 用 --playlist
-./vYtDL download --no-tui -o ./downloads -q 1080 --playlist \
-  "https://www.bilibili.com/video/BVxxxxxx"
-
-# TikTok — 多数情况需要 Cookie
-./vYtDL download --no-tui -o ./downloads \
   --cookies-from-browser chrome \
-  "https://www.tiktok.com/@user/video/123"
+  "https://www.youtube.com/watch?v=N2GFDDZtGQY"
 
-# X / Twitter
-./vYtDL download --no-tui -o ./downloads \
-  --cookies-from-browser chrome \
-  "https://x.com/user/status/123"
-
-# 小红书
-./vYtDL download --no-tui -o ./downloads \
-  --cookies-from-browser chrome \
-  "https://www.xiaohongshu.com/explore/xxxxxx"
-
-# Instagram Reels / 帖子
-./vYtDL download --no-tui -o ./downloads \
-  --cookies-from-browser chrome \
-  "https://www.instagram.com/reel/xxxxxx/"
-
-# Vimeo
-./vYtDL download --no-tui -o ./downloads -q 1080 \
-  "https://vimeo.com/123456789"
-
-# Twitch VOD（直播回放）
-./vYtDL download --no-tui -o ./downloads \
-  "https://www.twitch.tv/videos/123456789"
-
-# 只下某一时间段（任意支持分段的站点，需 FFmpeg）
+# Clip (needs FFmpeg)
 ./vYtDL download --no-tui -o ./downloads \
   --start 00:01:00 --end 00:02:30 \
   "https://www.youtube.com/watch?v=VIDEO_ID"
 
-# 国内网络：加代理
-./vYtDL download --no-tui -o ./downloads \
-  --proxy "http://127.0.0.1:7890" \
+# No subtitles
+./vYtDL download --no-tui -o ./downloads --no-subs \
+  "https://www.youtube.com/watch?v=VIDEO_ID"
+
+# Only Chinese subs
+./vYtDL download --no-tui -o ./downloads --sub-langs zh \
   "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
-List extractors on your machine:
+Equivalent raw yt-dlp (what vYtDL approximates):
 
 ```bash
-yt-dlp --list-extractors
-```
-
-See also: `docs/suggestions/supported-platforms.md`.
-
-## vYtDL vs 原始 yt-dlp：主要差别与简化
-
-vYtDL **不是**另一套下载引擎，而是对 `yt-dlp` 的薄封装：最终仍 spawn yt-dlp。差别在「默认值、参数简化、工作流」。
-
-| 维度 | 原始 yt-dlp | vYtDL CLI |
-|------|-------------|-----------|
-| 画质 | `-f "bestvideo[height<=1080]+bestaudio/..."` 自己写 | `-q 1080` |
-| 容器 | `--merge-output-format mp4` | `-f mp4`（默认 mp4） |
-| 字幕 | 多条 `--write-subs --write-auto-subs --sub-langs ...` | 默认开 EN+ZH；`--no-subs` 关掉 |
-| 输出路径 | `-o "dir/%(title)s.%(ext)s"` | `-o ./dir`（自动套模板） |
-| 时间片段 | `--download-sections "*1:00-2:30" --force-keyframes-at-cuts` | `--start` / `--end` |
-| 播放列表 | 自己管目录与失败重试 | `--playlist`：按标题建子目录 + **断点续传** |
-| 进度 | 文本滚动 | 默认 **TUI**；`--no-tui` 为纯文本 |
-| 记录 | 自己记日志 | 自动写 `download_record` + `subtitle_mapping`（json/csv） |
-| Cookie/代理 | 原样传 | 同名透传：`--cookies`、`--cookies-from-browser`、`--proxy` |
-| 并发 | 自己脚本循环 | `-j N` 多 URL 并发 |
-| 能力上限 | 全部 yt-dlp 旗标 | **常用子集**；冷门旗标用原生 yt-dlp |
-
-### 等价对照（同一意图）
-
-```bash
-# 原生 yt-dlp
 yt-dlp -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]" \
   --merge-output-format mp4 \
   --write-subs --write-auto-subs --sub-langs en,zh \
+  --js-runtimes node \
+  --cookies-from-browser chrome \
   -o "./downloads/%(title)s.%(ext)s" \
+  "https://www.youtube.com/watch?v=VIDEO_ID"
+```
+
+### Playlist
+
+```bash
+./vYtDL download --no-tui --playlist -o ./downloads -q 720 \
+  --cookies-from-browser chrome \
+  "https://www.youtube.com/playlist?list=PLxxxx"
+```
+
+What happens:
+
+1. Fetch playlist metadata.
+2. Create `./downloads/<Playlist Title>/`.
+3. Write `.playlist_state.json` and download entry-by-entry.
+4. Re-run the **same** command to resume; succeeded items are skipped.
+5. `--reset-playlist-state` discards state and starts over.
+
+```text
+./downloads/My Playlist/
+  .playlist_state.json
+  Video One.mp4
+  Video One.en.vtt
+  …
+./downloads/download_record.json
+./downloads/subtitle_mapping.json
+```
+
+### YouTube anti-bot / 403 / “n challenge”
+
+YouTube increasingly requires a **JS runtime** to solve the `n` parameter challenge. vYtDL defaults to `--js-runtimes node`.
+
+| Symptom | Fix |
+|---------|-----|
+| `No supported JavaScript runtime` / `n challenge solving failed` | Install Node.js, or `brew install deno` and pass `--js-runtimes deno` |
+| `HTTP Error 403` on formats | Update yt-dlp; add `--cookies-from-browser chrome`; optionally `--extractor-args` |
+| `Sign in to confirm you're not a bot` | Cookies from a logged-in browser profile |
+| `The page needs to be reloaded` | Fresh yt-dlp + node + cookies |
+| SSL / proxy errors | Fix proxy env, or `--proxy`, or `--force-ipv4` |
+
+Recommended recovery command:
+
+```bash
+./vYtDL download --no-tui -o ./downloads -q 1080 \
+  --cookies-from-browser chrome \
+  --js-runtimes node \
+  --extractor-args "youtube:player_client=web,android" \
+  --force-ipv4 \
+  --retries 10 \
+  --socket-timeout 30 \
+  "https://www.youtube.com/watch?v=VIDEO_ID"
+```
+
+Keep yt-dlp current:
+
+```bash
+./vYtDL download --install-yt-dlp
+# or: python3 -m pip install -U --user --break-system-packages yt-dlp
+```
+
+### Concurrent YouTube URLs
+
+```bash
+./vYtDL download --no-tui -j 2 -o ./downloads \
+  --cookies-from-browser chrome \
+  "https://www.youtube.com/watch?v=ID1" \
+  "https://www.youtube.com/watch?v=ID2"
+```
+
+Higher `-j` increases bot-check risk; prefer `1–3`.
+
+---
+
+## Bilibili（哔哩哔哩）
+
+### URL shapes
+
+| Kind | Example |
+|------|---------|
+| Single / multi-P | `https://www.bilibili.com/video/BVxxxxxx` |
+| `av` id | `https://www.bilibili.com/video/av123456` |
+| Short link | `https://b23.tv/xxxxx` |
+| Season / bangumi | `https://www.bilibili.com/bangumi/play/ss…` or `ep…` |
+| Favorites / collections | use `--playlist` |
+
+Multi-part（分 P）videos share one BV URL. Use `--playlist` to download all parts into a titled subdirectory with resume.
+
+### Single video (one P)
+
+```bash
+./vYtDL download --no-tui -o ./downloads -q 1080 \
+  --cookies-from-browser chrome \
+  "https://www.bilibili.com/video/BV1xx411c7mD"
+```
+
+Without `--playlist`, only the default / current part is fetched (`--no-playlist`).
+
+### Multi-P / collection / season
+
+```bash
+# All parts under one BV
+./vYtDL download --no-tui --playlist -o ./downloads -q 1080 \
   --cookies-from-browser chrome \
   "https://www.bilibili.com/video/BVxxxxxx"
 
-# vYtDL（同一件事）
+# Bangumi / season episode list
+./vYtDL download --no-tui --playlist -o ./downloads -q 1080 \
+  --cookies-from-browser chrome \
+  "https://www.bilibili.com/bangumi/play/ss12345"
+```
+
+Resume is the same as YouTube playlists: re-run the identical command; state lives in:
+
+```text
+./downloads/<标题>/.playlist_state.json
+```
+
+### Cookies and VIP / region
+
+| Need | Approach |
+|------|----------|
+| Higher quality / 大会员 | `--cookies-from-browser chrome` (logged-in bilibili.com session) |
+| Netscape file | `--cookies ./cookies.txt` |
+| Restricted region | `--proxy "http://127.0.0.1:7890"` |
+
+```bash
+./vYtDL download --no-tui --playlist -o ./downloads -q 1080 \
+  --cookies-from-browser chrome \
+  --proxy "socks5://127.0.0.1:7890" \
+  "https://www.bilibili.com/video/BVxxxxxx"
+```
+
+### Bilibili vs YouTube behavior notes
+
+| Topic | Notes |
+|-------|--------|
+| Subtitles | Official / CC tracks vary; auto-subs less common than YouTube. Defaults still request `en,zh`. |
+| Titles | Chinese titles are fine; filesystem-safe sanitization applies on playlist dirs. |
+| Entry URLs | Playlist entries use `webpage_url` from yt-dlp; vYtDL must not invent `youtube.com/watch` URLs. |
+| Quality | `-q 1080` still maps to height filter; actual max depends on login / VIP. |
+
+Equivalent raw yt-dlp:
+
+```bash
+yt-dlp -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]" \
+  --merge-output-format mp4 \
+  --write-subs --write-auto-subs --sub-langs en,zh \
+  --cookies-from-browser chrome \
+  -o "./downloads/%(title)s.%(ext)s" \
+  "https://www.bilibili.com/video/BVxxxxxx"
+
+# vYtDL
 ./vYtDL download --no-tui -o ./downloads -q 1080 \
   --cookies-from-browser chrome \
   "https://www.bilibili.com/video/BVxxxxxx"
 ```
 
-**一句话**：站点覆盖 ≈ yt-dlp；省事的是预设（画质/字幕/输出/列表续传/TUI/下载记录），不是多出一个下载器。
+---
 
-## Single Video
-
-Download one video into the current directory:
+## Build
 
 ```bash
-./vYtDL download --no-tui "https://www.youtube.com/watch?v=VIDEO_ID"
+# Host binary
+go build -trimpath -ldflags "-s -w" -o vYtDL .
+# or: task build
+
+# Cross-compile (macOS / Linux / Windows amd64+arm64)
+./scripts/build.sh
+ONLY=windows ./scripts/build.sh
+# task build:windows          (standalone Taskfile)
+# task cli:build:windows      (monorepo root Taskfile)
+
+# PowerShell
+.\scripts\build.ps1 -Only windows
+
+# Embed yt-dlp into the binary
+./scripts/fetch-ytdlp.sh --embed
+go build -tags embed_ytdlp -o vYtDL .
+EMBED=1 ONLY=windows ./scripts/build.sh
 ```
 
-Download one video to a target folder with 1080p quality:
+Artifacts: `dist/vYtDL-<os>-<arch>[.exe]`. Download outputs (`*.mp4`, `*.part`, `*.ytdl`, records) are gitignored.
+
+---
+
+## Playlist resume (any site)
+
+Implementation (`internal/playliststate` + `DownloadPlaylist`):
+
+1. Dump playlist entries once.
+2. Persist queue + per-item status in `.playlist_state.json`.
+3. Skip `succeeded`; retry `failed` / unfinished.
+4. `--reset-playlist-state` clears the file.
 
 ```bash
-./vYtDL download --no-tui \
-  --output ./downloads \
-  --quality 1080 \
-  "https://www.youtube.com/watch?v=VIDEO_ID"
+./vYtDL download --no-tui --playlist -o ./downloads \
+  "https://www.youtube.com/playlist?list=PLxxxx"
+# interrupt, then re-run the same command
 ```
 
-Download a clip from a time range:
+---
+
+## Concurrent downloads
 
 ```bash
-./vYtDL download --no-tui \
-  --start 00:01:00 \
-  --end 00:02:30 \
-  "https://www.youtube.com/watch?v=VIDEO_ID"
-```
-
-## Collection Download
-
-Download a full YouTube playlist or collection:
-
-```bash
-./vYtDL download --no-tui \
-  --playlist \
-  --output ./downloads \
-  "https://www.youtube.com/playlist?list=PL2C4A8A7A6F3A5D3C"
-```
-
-Collection download with custom quality and CSV logs:
-
-```bash
-./vYtDL download --no-tui \
-  --playlist \
-  --quality 720 \
-  --log-format csv \
-  --output ./downloads \
-  "https://www.youtube.com/playlist?list=PL2C4A8A7A6F3A5D3C"
-```
-
-What happens:
-
-- `./downloads` is the root output directory.
-- The playlist title becomes a subdirectory under `./downloads`.
-- Each video is downloaded one by one into that playlist directory.
-- `download_record.json` or `download_record.csv` is written in the output root.
-- `subtitle_mapping.json` or `subtitle_mapping.csv` is written in the output root.
-
-## Resume Solution For Playlist Downloads
-
-Playlist resume is now built in.
-
-The implementation works like this:
-
-- vYtDL fetches the full playlist entry list first.
-- It creates a state file named `.playlist_state.json` inside the playlist directory.
-- Each video is tracked with a status: `pending`, `running`, `succeeded`, or `failed`.
-- Downloads are executed one by one.
-- After each item finishes, the state file is updated immediately.
-- On the next run with the same playlist URL and output directory, already successful items are skipped and only unfinished or failed items are retried.
-
-Resume example:
-
-```bash
-./vYtDL download --no-tui \
-  --playlist \
-  --output ./downloads \
-  "https://www.youtube.com/playlist?list=PL2C4A8A7A6F3A5D3C"
-```
-
-If the run stops halfway, just run the exact same command again. vYtDL will resume from the remaining failed or unfinished items.
-
-State file example location:
-
-```text
-./downloads/My Playlist/.playlist_state.json
-```
-
-Start the playlist from scratch and ignore the saved state:
-
-```bash
-./vYtDL download --no-tui \
-  --playlist \
-  --reset-playlist-state \
-  --output ./downloads \
-  "https://www.youtube.com/playlist?list=PL2C4A8A7A6F3A5D3C"
-```
-
-## Shell Scripts
-
-Single video:
-
-```bash
-./scripts/download_video.sh "https://www.youtube.com/watch?v=VIDEO_ID" ./downloads
-```
-
-Single video with custom quality:
-
-```bash
-./scripts/download_video.sh "https://www.youtube.com/watch?v=VIDEO_ID" ./downloads 720
-```
-
-Collection:
-
-```bash
-./scripts/download_collection.sh "https://www.youtube.com/playlist?list=PL2C4A8A7A6F3A5D3C" ./downloads
-```
-
-Collection with custom quality:
-
-```bash
-./scripts/download_collection.sh "https://www.youtube.com/playlist?list=PL2C4A8A7A6F3A5D3C" ./downloads 720
-```
-
-The shell script resume behavior is the same as the CLI. Re-run the same script command and it will continue from unfinished playlist items.
-Both `download_video.sh` and `download_collection.sh` also check for `yt-dlp`/`youtube-dl` in PATH before running.
-
-## Output Files
-
-Each run writes two main files to the chosen output directory:
-
-- `download_record.json` or `download_record.csv`
-- `subtitle_mapping.json` or `subtitle_mapping.csv`
-
-For playlist runs, vYtDL also writes:
-
-- `.playlist_state.json` inside the playlist directory
-
-The download record includes:
-
-- whether the download succeeded
-- failure reason when it did not
-- source URL
-- output path
-- timestamps and duration
-
-The subtitle mapping includes:
-
-- video id
-- video title
-- video file path
-- subtitle file paths
-
-The playlist state file includes:
-
-- full playlist queue
-- per-video status
-- attempt count
-- last error
-- last finished filename
-
-## Concurrent Downloads
-
-Use the `--concurrency` / `-j` flag to download multiple URLs in parallel:
-
-```bash
-# Two videos at once
-./vYtDL download --no-tui -j 2 \
+./vYtDL download --no-tui -j 3 -o ./downloads \
   "URL1" "URL2" "URL3"
-
-# Batch with configurable concurrency
-./vYtDL download --no-tui --concurrency 3 \
-  --output ./downloads \
-  "URL1" "URL2" "URL3" "URL4"
 ```
 
-- Default: `-j 1` (sequential, same as old behavior)
-- Internally uses a worker pool with semaphore + WaitGroup
-- Results and records are thread-safe
-- Higher concurrency = more YouTube requests = higher chance of triggering anti-bot measures
+Worker pool with semaphore (`cmd/download.go`). Records are mutex-protected.
 
-## Subtitle Analysis
+---
 
-Once you have downloaded `.vtt` subtitle files, you can extract plain text with the `analyze` command:
+## Output files
+
+| File | Purpose |
+|------|---------|
+| `download_record.json` / `.csv` | success/fail, URL, paths, errors, timing |
+| `subtitle_mapping.json` / `.csv` | video ↔ subtitle paths |
+| `<playlist>/.playlist_state.json` | resume queue |
+
+Change names/format with `--record-file`, `--mapping-file`, `--log-format csv`.
+
+---
+
+## Subtitle analysis
 
 ```bash
-# Plain text extraction
-./vYtDL analyze --mode text video.zh.vtt
-
-# Write to file
-./vYtDL analyze --mode text --output transcript.txt video.en.vtt
-
-# Pipe from stdin
+./vYtDL analyze --mode text video.en.vtt
+./vYtDL analyze --mode text --output transcript.txt video.zh.vtt
 ./vYtDL analyze < video.vtt
 ```
 
-Aliases: `an`, `ana`
+Handles YouTube auto-generated VTT (`<c>` tags). Aliases: `an`, `ana`.
 
-The parser handles both simple manual captions and YouTube auto-generated captions (with `<c>` word-timing tags). More analysis modes (`summary`, `keypoints`) are planned — see `tasks/vtt-analysis-spec.md`.
+---
 
-## Recovery Options
+## Other sites
 
-If YouTube blocks anonymous extraction, use the recovery flags from `help.md`:
-
-```bash
-./vYtDL download --no-tui \
-  --cookies-from-browser chrome \
-  --extractor-args "youtube:player_client=web,android" \
-  --force-ipv4 \
-  --socket-timeout 30 \
-  --retries 10 \
-  "https://www.youtube.com/watch?v=VIDEO_ID"
-```
-
-**YouTube `n` challenge**: If you see `Sign in to confirm you're not a bot` even with cookies, YouTube's JavaScript challenge requires a JS runtime:
+Same CLI; cookies often required:
 
 ```bash
-# Use Node.js (if available) via yt-dlp directly:
-yt-dlp --cookies-from-browser chrome --js-runtimes node "URL"
+./vYtDL download --no-tui -o ./downloads --cookies-from-browser chrome \
+  "https://www.tiktok.com/@user/video/123"
 
-# Or install deno:
-brew install deno
+./vYtDL download --no-tui -o ./downloads --cookies-from-browser chrome \
+  "https://x.com/user/status/123"
+
+./vYtDL download --no-tui -o ./downloads --cookies-from-browser chrome \
+  "https://www.xiaohongshu.com/explore/xxxxxx"
 ```
 
-vYtDL defaults to `--js-runtimes node`. Override with `--js-runtimes deno` (or another runtime) if needed.
+List extractors: `yt-dlp --list-extractors`. See also `docs/suggestions/supported-platforms.md` in the monorepo.
 
-Supported passthrough flags:
+---
+
+## Shell wrappers
+
+```bash
+./scripts/download_video.sh "https://www.youtube.com/watch?v=ID" ./downloads 1080
+./scripts/download_collection.sh "https://www.youtube.com/playlist?list=PLxxxx" ./downloads 720
+```
+
+---
+
+## Passthrough flags
 
 - `--yt-dlp-bin`
 - `--proxy`
-- `--cookies`
-- `--cookies-from-browser`
+- `--cookies` / `--cookies-from-browser`
 - `--user-agent`
 - `--extractor-args`
-- `--js-runtimes`
-- `--retries`
-- `--socket-timeout`
-- `--force-ipv4`
+- `--js-runtimes` (default `node`)
+- `--retries` / `--socket-timeout` / `--force-ipv4`
 
-## Known Fix
+---
 
-The original failure log used an escaped URL:
+## Troubleshooting
 
-```text
-https://www.youtube.com/watch\?v\=EBWTRvjZ1dw
-```
-
-The downloader now normalizes that input automatically to:
-
-```text
-https://www.youtube.com/watch?v=EBWTRvjZ1dw
-```
+| Problem | Action |
+|--------|--------|
+| yt-dlp missing | `--install-yt-dlp`, embed build, or set `--yt-dlp-bin` |
+| GitHub slow | `VYTDL_YTDLP_MIRROR` |
+| YouTube 403 / n-challenge | Node/Deno + cookies + update yt-dlp (see [YouTube](#youtube)) |
+| Bilibili low quality | Login cookies / VIP |
+| Playlist resumes wrong items | Same `-o` and URL; or `--reset-playlist-state` |
+| go.work errors | `GOWORK=off go build …` or use Taskfile (`env.GOWORK=off`) |
