@@ -2,12 +2,14 @@ package downloader
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,6 +43,15 @@ type VideoInfo struct {
 type Downloader struct {
 	opts     Options
 	progress chan<- ProgressUpdate
+	logs     chan<- LogLine
+	ctx      context.Context
+	cancel   context.CancelFunc
+}
+
+// LogLine is one human-readable downloader log line.
+type LogLine struct {
+	Level   string `json:"level"` // "info" (stdout) or "warn" (stderr)
+	Message string `json:"message"`
 }
 
 type playlistEntry struct {
@@ -58,7 +69,34 @@ type playlistMetadata struct {
 
 // New creates a new Downloader. progress receives live updates (may be nil).
 func New(opts Options, progress chan<- ProgressUpdate) *Downloader {
-	return &Downloader{opts: opts, progress: progress}
+	ctx, cancel := context.WithCancel(context.Background())
+	return &Downloader{opts: opts, progress: progress, ctx: ctx, cancel: cancel}
+}
+
+// SetLogs attaches an optional log line stream. Sends are best-effort
+// (dropped when the channel is full so a slow consumer never stalls a download).
+func (d *Downloader) SetLogs(ch chan<- LogLine) { d.logs = ch }
+
+// Cancel aborts the running download (kills the yt-dlp process). Safe to call
+// from any goroutine; it is a no-op once the download has finished.
+func (d *Downloader) Cancel() {
+	if d.cancel != nil {
+		d.cancel()
+	}
+}
+
+// cancelled reports whether Cancel was called (or the context expired).
+func (d *Downloader) cancelled() bool { return d.ctx.Err() != nil }
+
+// log emits one log line when a log stream is attached.
+func (d *Downloader) log(level, msg string) {
+	if d.logs == nil {
+		return
+	}
+	select {
+	case d.logs <- LogLine{Level: level, Message: msg}:
+	default:
+	}
 }
 
 // ytdlpBin returns the yt-dlp binary path (PATH, embed, or auto-download cache).
@@ -72,14 +110,33 @@ func (d *Downloader) buildArgs(url, outDir string) []string {
 	args := []string{}
 	container := strings.TrimSpace(o.Format)
 
-	// Format selection
-	if o.Quality != "" && o.Quality != "bestvideo+bestaudio" {
-		// quality like "720", "1080" → select best video up to that height
-		height := strings.TrimSuffix(o.Quality, "p")
-		videoSel := fmt.Sprintf("bestvideo[height<=%s]", height)
-		bestSel := fmt.Sprintf("best[height<=%s]", height)
-		fmtStr := fmt.Sprintf("%s+bestaudio/%s", videoSel, bestSel)
-		args = append(args, "-f", fmtStr)
+	// Config handling: explicit config wins; otherwise service mode ignores
+	// user-level configs so behavior stays deterministic.
+	if c := strings.TrimSpace(o.ConfigLocation); c != "" {
+		args = append(args, "--config-locations", c)
+	} else if o.IgnoreUserConfig {
+		args = append(args, "--ignore-config")
+	}
+	if o.WindowsFilenames {
+		args = append(args, "--windows-filenames") // cross-platform safe names
+	}
+
+	// Format selection: exact format_id (Format Picker) first, then quality preset.
+	hasSections := o.StartTime != "" || o.EndTime != ""
+	if fid := strings.TrimSpace(o.FormatID); fid != "" {
+		args = append(args, "-f", fid)
+	} else if q := strings.TrimSpace(o.Quality); q != "" && q != "bestvideo+bestaudio" {
+		switch {
+		case q == "best":
+			args = append(args, "-f", "bestvideo+bestaudio/best")
+		case heightRe.MatchString(q):
+			// quality like "720", "1080p" → select best video up to that height
+			height := strings.TrimSuffix(q, "p")
+			args = append(args, "-f", fmt.Sprintf("bestvideo[height<=%s]+bestaudio/best[height<=%s]", height, height))
+		default:
+			// Raw selector passthrough (custom -f expressions).
+			args = append(args, "-f", q)
+		}
 	} else {
 		args = append(args, "-f", "bestvideo+bestaudio/best")
 	}
@@ -90,7 +147,7 @@ func (d *Downloader) buildArgs(url, outDir string) []string {
 	}
 
 	// Output template
-	outTemplate := filepath.Join(outDir, "%(title)s.%(ext)s")
+	outTemplate := filepath.Join(outDir, o.outputTemplate())
 	args = append(args, "-o", outTemplate)
 
 	// Subtitles
@@ -98,26 +155,48 @@ func (d *Downloader) buildArgs(url, outDir string) []string {
 		args = append(args, "--write-subs")
 		if o.WriteAutoSubs {
 			args = append(args, "--write-auto-subs")
+			if sleep := strings.TrimSpace(o.SleepSubtitles); sleep != "" {
+				// 坑知识 #3: pacing keeps auto/translated subtitle fetches from being rate limited
+				args = append(args, "--sleep-subtitles", sleep)
+			}
 		}
 		if len(o.SubtitleLangs) > 0 {
 			args = append(args, "--sub-langs", strings.Join(o.SubtitleLangs, ","))
 		}
 	}
 
+	// Embed post-processing
+	if o.EmbedMetadata {
+		args = append(args, "--embed-metadata")
+	}
+	if o.EmbedChapters {
+		args = append(args, "--embed-chapters")
+	}
+	if o.EmbedThumbnail && container != "webm" {
+		// webm containers do not support embedded covers (坑知识 #2)
+		args = append(args, "--embed-thumbnail")
+	}
+	if o.SponsorblockRemove {
+		args = append(args, "--sponsorblock-remove", "all")
+	}
+
 	// Time range (requires ffmpeg)
-	if o.StartTime != "" || o.EndTime != "" {
-		section := ""
-		if o.StartTime != "" {
-			section += "*" + o.StartTime + "-"
-		} else {
-			section += "*0-"
-		}
-		if o.EndTime != "" {
-			section += o.EndTime
-		} else {
-			section += "inf"
-		}
+	if hasSections {
+		section := "*" + orDefault(o.StartTime, "0") + "-" + orDefault(o.EndTime, "inf")
 		args = append(args, "--download-sections", section, "--force-keyframes-at-cuts")
+		if o.SectionSafeSelector {
+			// 坑知识 #1: section clips need direct merge disabled and a muxed-safe
+			// selector, otherwise progress stalls.
+			args = append(args, "--compat-options", "no-direct-merge")
+			if strings.TrimSpace(o.FormatID) == "" {
+				for i, a := range args {
+					if a == "-f" && i+1 < len(args) {
+						args[i+1] = SectionSafeSelector
+						break
+					}
+				}
+			}
+		}
 	}
 
 	// Playlist handling
@@ -134,6 +213,12 @@ func (d *Downloader) buildArgs(url, outDir string) []string {
 	if o.ForceIPv4 {
 		args = append(args, "--force-ipv4")
 	}
+	if rl := strings.TrimSpace(o.RateLimit); rl != "" {
+		args = append(args, "-r", rl)
+	}
+	if o.ConcurrentFragments > 0 {
+		args = append(args, "--concurrent-fragments", strconv.Itoa(o.ConcurrentFragments))
+	}
 	if proxy := strings.TrimSpace(o.Proxy); proxy != "" {
 		args = append(args, "--proxy", proxy)
 	}
@@ -146,8 +231,8 @@ func (d *Downloader) buildArgs(url, outDir string) []string {
 	if ua := strings.TrimSpace(o.UserAgent); ua != "" {
 		args = append(args, "--user-agent", ua)
 	}
-	if extractorArgs := strings.TrimSpace(o.ExtractorArgs); extractorArgs != "" {
-		args = append(args, "--extractor-args", extractorArgs)
+	for _, value := range o.extractorArgValues() {
+		args = append(args, "--extractor-args", value)
 	}
 	if jsRuntimes := strings.TrimSpace(o.JSRuntimes); jsRuntimes != "" {
 		args = append(args, "--js-runtimes", jsRuntimes)
@@ -163,6 +248,41 @@ func (d *Downloader) buildArgs(url, outDir string) []string {
 	return args
 }
 
+// outputTemplate returns the yt-dlp output template for these options.
+func (o Options) outputTemplate() string {
+	if t := strings.TrimSpace(o.FilenameTemplate); t != "" {
+		return t
+	}
+	return "%(title)s.%(ext)s"
+}
+
+// extractorArgValues composes the --extractor-args values: PO token first,
+// then list-form values, then the single-string CLI form.
+func (o Options) extractorArgValues() []string {
+	values := make([]string, 0, 3)
+	if po := strings.TrimSpace(o.POToken); po != "" {
+		values = append(values, "youtube:po_token="+po)
+	}
+	for _, v := range o.ExtractorArgsValues {
+		if v = strings.TrimSpace(v); v != "" {
+			values = append(values, v)
+		}
+	}
+	if extra := strings.TrimSpace(o.ExtractorArgs); extra != "" {
+		values = append(values, extra)
+	}
+	return values
+}
+
+var heightRe = regexp.MustCompile(`^\d+p?$`)
+
+func orDefault(v, def string) string {
+	if strings.TrimSpace(v) != "" {
+		return v
+	}
+	return def
+}
+
 // progressRe matches yt-dlp progress lines like:
 // [download]  42.3% of ~100.00MiB at  2.00MiB/s ETA 00:30
 var progressRe = regexp.MustCompile(`\[download\]\s+([\d.]+)%.*?at\s+(\S+)\s+ETA\s+(\S+)`)
@@ -176,6 +296,7 @@ type DownloadResult struct {
 	Filename   string
 	Subtitles  []string // paths to subtitle files
 	Success    bool
+	Cancelled  bool // aborted via Cancel()
 	Error      string
 	StartedAt  time.Time
 	FinishedAt time.Time
@@ -236,6 +357,9 @@ func (d *Downloader) DownloadPlaylist(url string) []DownloadResult {
 
 	results := make([]DownloadResult, 0, len(meta.Entries))
 	for _, entry := range stateMgr.Entries() {
+		if d.cancelled() {
+			break
+		}
 		key := playlistStateKey(entry.ID, entry.URL)
 		if entry.Status == playliststate.StatusSucceeded {
 			if d.progress != nil {
@@ -304,7 +428,7 @@ func (d *Downloader) download(url, outDir string) DownloadResult {
 	}
 
 	args := d.buildArgs(url, outDir)
-	cmd := exec.Command(bin, args...)
+	cmd := exec.CommandContext(d.ctx, bin, args...)
 	cmd.Dir = outDir
 
 	stdout, err := cmd.StdoutPipe()
@@ -333,6 +457,11 @@ func (d *Downloader) download(url, outDir string) DownloadResult {
 	}
 
 	if err := cmd.Start(); err != nil {
+		if d.cancelled() {
+			result.Cancelled = true
+			result.Error = "download cancelled"
+			return result
+		}
 		result.Error = err.Error()
 		return result
 	}
@@ -342,7 +471,9 @@ func (d *Downloader) download(url, outDir string) DownloadResult {
 	go func() {
 		sc := bufio.NewScanner(stderr)
 		for sc.Scan() {
-			stderrLines = append(stderrLines, sc.Text())
+			line := sc.Text()
+			stderrLines = append(stderrLines, line)
+			d.log("warn", line)
 		}
 	}()
 
@@ -387,11 +518,30 @@ func (d *Downloader) download(url, outDir string) DownloadResult {
 					Status:  "downloading",
 				}
 			}
+		} else if strings.HasPrefix(line, "[download]") {
+			d.log("info", line)
 		}
 	}
 
 	cmdErr := cmd.Wait()
 	result.FinishedAt = time.Now()
+
+	if d.cancelled() {
+		// Abort requested via Cancel(): classify as cancelled regardless of how
+		// the killed process exited.
+		result.Cancelled = true
+		result.Error = "download cancelled"
+		if d.progress != nil {
+			d.progress <- ProgressUpdate{
+				Key:     progressKey(requestKey, lastJSON.ID, lastJSON.Title),
+				VideoID: lastJSON.ID,
+				Title:   lastJSON.Title,
+				Status:  "error",
+				Error:   result.Error,
+			}
+		}
+		return result
+	}
 
 	if cmdErr != nil {
 		result.Success = false

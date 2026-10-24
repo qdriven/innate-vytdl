@@ -2,19 +2,24 @@
 
 Go CLI / TUI wrapper around [yt-dlp](https://github.com/yt-dlp/yt-dlp) for downloading videos from **1800+ sites** (YouTube, Bilibili, TikTok, X/Twitter, Instagram, Vimeo, Twitch, 小红书, …).
 
-This is the **standalone CLI** repository (module `github.com/innate/yt-dl`). Desktop / Web live in `innate-keepthem`.
+The canonical source now lives **in the monorepo** at `services/vytdl/`
+(refactor Sprint 1, Q1 decision); `qdriven/innate-vytdl` receives one-way sync
+PRs from it. The module path remains `github.com/innate/yt-dl`.
+
+Beyond the CLI/TUI, this module ships the **background service** (`vYtDL serve`)
+that acts as the single backend for the web UI — see [USAGE](USAGE.md#background-service-serve).
 
 ## Requirements
 
-- Go **1.24+**
+- Go **1.26+**
 - Optional: system [yt-dlp](https://github.com/yt-dlp/yt-dlp) (otherwise auto-download or embed)
 - Optional: FFmpeg (time-range clips / merge)
 
 ## Build
 
 ```bash
-git clone https://github.com/qdriven/innate-vytdl.git
-cd innate-vytdl
+# from the monorepo root (source lives in services/vytdl/)
+cd services/vytdl
 go build -o vYtDL .
 
 # Cross-compile all platforms (macOS / Linux / Windows)
