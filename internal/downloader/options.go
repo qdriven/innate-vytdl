@@ -74,7 +74,63 @@ type Options struct {
 
 	// ResetPlaylistState discards any saved playlist resume state before downloading.
 	ResetPlaylistState bool
+
+	// FormatID is an exact yt-dlp format selector (Format Picker route).
+	// When set it overrides Quality.
+	FormatID string
+
+	// RateLimit caps download speed, e.g. "500K" or "2M". Passed as -r.
+	RateLimit string
+
+	// ConcurrentFragments enables fragmented downloads with N threads.
+	// 0 disables the flag (yt-dlp default).
+	ConcurrentFragments int
+
+	// EmbedThumbnail / EmbedMetadata / EmbedChapters enable post-processing.
+	// EmbedThumbnail is skipped for webm containers (no cover support).
+	EmbedThumbnail bool
+	EmbedMetadata  bool
+	EmbedChapters  bool
+
+	// SponsorblockRemove strips sponsor segments (--sponsorblock-remove all).
+	SponsorblockRemove bool
+
+	// FilenameTemplate overrides the output template. Empty uses
+	// "%(title)s.%(ext)s".
+	FilenameTemplate string
+
+	// POToken is forwarded as an "youtube:po_token=..." extractor arg.
+	POToken string
+
+	// ExtractorArgsValues adds one --extractor-args flag per entry.
+	// ExtractorArgs (single string) is kept for CLI compatibility and is
+	// appended after these.
+	ExtractorArgsValues []string
+
+	// ConfigLocation points at a user-provided yt-dlp config file
+	// (--config-locations). Empty + IgnoreUserConfig emits --ignore-config.
+	ConfigLocation string
+
+	// IgnoreUserConfig forces --ignore-config so user-level yt-dlp configs
+	// cannot alter behavior (service mode default).
+	IgnoreUserConfig bool
+
+	// WindowsFilenames forces cross-platform-safe filenames (--windows-filenames).
+	WindowsFilenames bool
+
+	// SleepSubtitles delays automatic subtitle downloads (--sleep-subtitles).
+	// Empty skips the flag. Service mode uses "1" to avoid rate limiting.
+	SleepSubtitles string
+
+	// SectionSafeSelector swaps the format selector for a muxed-safe one when
+	// clipping time ranges, and disables direct merge, so progress does not
+	// stall (desktop 坑知识 #1).
+	SectionSafeSelector bool
 }
+
+// SectionSafeSelector is the muxed-safe format selector used for time-range
+// clips when no exact format_id is given.
+const SectionSafeSelector = "best[protocol!*=dash][vcodec!=none][acodec!=none]/best[protocol!*=dash]/best"
 
 // DefaultOptions returns sane defaults.
 func DefaultOptions() Options {

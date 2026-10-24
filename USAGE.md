@@ -384,6 +384,43 @@ Handles YouTube auto-generated VTT (`<c>` tags). Aliases: `an`, `ana`.
 
 ---
 
+## Background service (`serve`)
+
+`serve` runs the vYtDL daemon: an HTTP API + WebSocket server that owns the
+download queue, SQLite persistence, VTT analysis, and optional static frontend
+hosting. It is the single backend for the web UI (see
+`docs/refactor/sprint-0/` in the monorepo).
+
+```bash
+# Desktop-shell style: random loopback port, serve the exported frontend
+./vYtDL serve --port 0 --static ./out
+
+# Docker deployment: all interfaces, fixed port
+./vYtDL serve --host 0.0.0.0 --port 3000 --static /app/out --home /app/data
+
+# Local dev: request logging
+./vYtDL serve --dev --home ./.daemon-home
+```
+
+| Flag | Default | Meaning |
+|------|---------|---------|
+| `--port` | `0` (`PORT` env) | Listen port; `0` picks a random free port |
+| `--host` | `127.0.0.1` (`VYTDL_HOST`) | Bind address; `0.0.0.0` for Docker |
+| `--static` | `VYTDL_STATIC_DIR` | Serve the exported frontend from this dir (SPA fallback included) |
+| `--home` | `~/.vytdl` (`VYTDL_HOME`) | Data root — `vytdl.db` and logs live here |
+| `--dev` | off | Request logging |
+
+Notes:
+
+- Default download dir is `<home>/downloads` (override: `VYTDL_OUTPUT_DIR`).
+- The API mirrors the previous web backend one-to-one (`POST /api/start-download`,
+  `GET /api/downloads`, `WS /api/ws`, …) — the existing web frontend works unchanged.
+- On startup the daemon resumes downloads that were `pending`/`downloading`
+  when it last stopped (their serialized options are stored in the `options`
+  column). `GET /api/health` reports readiness for the desktop shell.
+
+---
+
 ## Other sites
 
 Same CLI; cookies often required:
