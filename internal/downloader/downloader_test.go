@@ -122,6 +122,85 @@ exit 1
 	}
 }
 
+func TestBuildArgsTwitterUsesSyndicationAPI(t *testing.T) {
+	t.Parallel()
+
+	d := New(Options{Format: "mp4", OutputDir: "/tmp/out"}, nil)
+	args := d.buildArgs("https://x.com/IndianaFever/status/2095632325371461901", "/tmp/out")
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--extractor-args twitter:api=syndication") {
+		t.Fatalf("expected Twitter syndication fallback, got %q", joined)
+	}
+
+	twitterDotCom := strings.Join(d.buildArgs("https://twitter.com/user/status/123", "/tmp/out"), " ")
+	if !strings.Contains(twitterDotCom, "--extractor-args twitter:api=syndication") {
+		t.Fatalf("expected Twitter syndication fallback for twitter.com, got %q", twitterDotCom)
+	}
+
+	youtube := strings.Join(d.buildArgs("https://www.youtube.com/watch?v=test", "/tmp/out"), " ")
+	if strings.Contains(youtube, "twitter:api=syndication") {
+		t.Fatalf("did not expect Twitter extractor args for YouTube, got %q", youtube)
+	}
+
+	override := New(Options{
+		Format:        "mp4",
+		OutputDir:     "/tmp/out",
+		ExtractorArgs: "twitter:api=legacy",
+	}, nil)
+	overridden := strings.Join(override.buildArgs("https://x.com/user/status/1", "/tmp/out"), " ")
+	if strings.Contains(overridden, "twitter:api=syndication") {
+		t.Fatalf("user twitter:api should win, got %q", overridden)
+	}
+	if !strings.Contains(overridden, "--extractor-args twitter:api=legacy") {
+		t.Fatalf("expected user extractor args, got %q", overridden)
+	}
+
+	listOverride := New(Options{
+		Format:              "mp4",
+		OutputDir:           "/tmp/out",
+		ExtractorArgsValues: []string{"twitter:api=graphql"},
+	}, nil)
+	listOverridden := strings.Join(listOverride.buildArgs("https://x.com/user/status/1", "/tmp/out"), " ")
+	if strings.Contains(listOverridden, "twitter:api=syndication") {
+		t.Fatalf("list-form user twitter:api should win, got %q", listOverridden)
+	}
+
+	both := New(Options{
+		Format:        "mp4",
+		OutputDir:     "/tmp/out",
+		ExtractorArgs: "youtube:player_client=web",
+	}, nil)
+	combined := strings.Join(both.buildArgs("https://x.com/user/status/1", "/tmp/out"), " ")
+	if !strings.Contains(combined, "--extractor-args twitter:api=syndication") {
+		t.Fatalf("expected auto Twitter args alongside user args, got %q", combined)
+	}
+	if !strings.Contains(combined, "--extractor-args youtube:player_client=web") {
+		t.Fatalf("expected user youtube extractor args to remain, got %q", combined)
+	}
+}
+
+func TestIsTwitterURL(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		url  string
+		want bool
+	}{
+		{"https://x.com/user/status/1", true},
+		{"https://www.x.com/user/status/1", true},
+		{"https://twitter.com/user/status/1", true},
+		{"https://mobile.twitter.com/user/status/1", true},
+		{"https://vxtwitter.com/user/status/1", true},
+		{"https://www.youtube.com/watch?v=1", false},
+		{"https://examplex.com/status/1", false},
+		{"https://prefixx.com/foo", false},
+	}
+	for _, tc := range cases {
+		if got := isTwitterURL(tc.url); got != tc.want {
+			t.Fatalf("isTwitterURL(%q) = %v, want %v", tc.url, got, tc.want)
+		}
+	}
+}
+
 func TestNormalizeURLUnescapesShellEscapes(t *testing.T) {
 	t.Parallel()
 

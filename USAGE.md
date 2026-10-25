@@ -423,13 +423,19 @@ Notes:
 
 ## Other sites
 
-Same CLI; cookies often required:
+Same CLI; cookies often required for TikTok / 小红书 / Instagram. **X / Twitter** public videos use the syndication embed API automatically (`twitter:api=syndication`) because the guest GraphQL API frequently fails with TLS/Cloudflare errors.
 
 ```bash
 ./vYtDL download --no-tui -o ./downloads --cookies-from-browser chrome \
   "https://www.tiktok.com/@user/video/123"
 
+# X / Twitter — no extra flags needed for public posts
+./vYtDL download --no-tui -o ./downloads \
+  "https://x.com/user/status/123"
+
+# Private / NSFW tweets still need cookies; this also disables the syndication fallback
 ./vYtDL download --no-tui -o ./downloads --cookies-from-browser chrome \
+  --extractor-args "twitter:api=graphql" \
   "https://x.com/user/status/123"
 
 ./vYtDL download --no-tui -o ./downloads --cookies-from-browser chrome \

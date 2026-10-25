@@ -85,7 +85,7 @@ func init() {
 	dl.Flags().StringVar(&flagUserAgent, "user-agent", "",
 		"Custom User-Agent string passed through to yt-dlp")
 	dl.Flags().StringVar(&flagExtractor, "extractor-args", "",
-		"Extractor args passed through to yt-dlp, e.g. youtube:player_client=web,android")
+		"Extractor args passed through to yt-dlp, e.g. youtube:player_client=web,android (X/Twitter URLs auto-add twitter:api=syndication unless twitter:api is set)")
 	dl.Flags().StringVar(&flagJSRuntimes, "js-runtimes", "node",
 		"JS runtime(s) for YouTube n-challenge (yt-dlp --js-runtimes), e.g. node or deno")
 	dl.Flags().StringVar(&flagRetries, "retries", "10",
@@ -190,26 +190,37 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	progressCh := make(chan downloader.ProgressUpdate, 100)
 
 	// Start TUI or plain logger in a goroutine
+	plainLogger := func() {
+		for upd := range progressCh {
+			switch upd.Status {
+			case "done":
+				fmt.Printf("[done]  %s\n", upd.Title)
+			case "error":
+				fmt.Printf("[error] %s: %s\n", upd.Title, upd.Error)
+			case "downloading":
+				fmt.Printf("[%.1f%%] %s  %s  ETA %s\n",
+					upd.Percent, upd.Title, upd.Speed, upd.ETA)
+			default:
+				fmt.Printf("[%s] %s\n", upd.Status, upd.Title)
+			}
+		}
+	}
 	tuiDone := make(chan error, 1)
 	if !flagNoTUI {
 		go func() {
-			tuiDone <- tui.Run(progressCh)
+			if err := tui.Run(progressCh); err != nil {
+				// TUI unavailable (e.g. no TTY in scripts/cron); keep
+				// draining progressCh so senders never block.
+				fmt.Fprintf(os.Stderr, "TUI error: %v — falling back to plain progress\n", err)
+				plainLogger()
+				tuiDone <- nil
+				return
+			}
+			tuiDone <- nil
 		}()
 	} else {
 		go func() {
-			for upd := range progressCh {
-				switch upd.Status {
-				case "done":
-					fmt.Printf("[done]  %s\n", upd.Title)
-				case "error":
-					fmt.Printf("[error] %s: %s\n", upd.Title, upd.Error)
-				case "downloading":
-					fmt.Printf("[%.1f%%] %s  %s  ETA %s\n",
-						upd.Percent, upd.Title, upd.Speed, upd.ETA)
-				default:
-					fmt.Printf("[%s] %s\n", upd.Status, upd.Title)
-				}
-			}
+			plainLogger()
 			tuiDone <- nil
 		}()
 	}

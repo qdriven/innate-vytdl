@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -230,6 +231,9 @@ func (d *Downloader) buildArgs(url, outDir string) []string {
 	}
 	if ua := strings.TrimSpace(o.UserAgent); ua != "" {
 		args = append(args, "--user-agent", ua)
+	}
+	if value, ok := o.syndicationFallback(url); ok {
+		args = append(args, "--extractor-args", value)
 	}
 	for _, value := range o.extractorArgValues() {
 		args = append(args, "--extractor-args", value)
@@ -599,7 +603,15 @@ func (d *Downloader) fetchPlaylistMetadata(url string) (playlistMetadata, error)
 	if err != nil {
 		return playlistMetadata{}, err
 	}
-	out, err := exec.Command(bin, "--dump-single-json", "--flat-playlist", url).Output()
+	args := []string{"--dump-single-json", "--flat-playlist"}
+	if value, ok := d.opts.syndicationFallback(url); ok {
+		args = append(args, "--extractor-args", value)
+	}
+	if extra := strings.TrimSpace(d.opts.ExtractorArgs); extra != "" {
+		args = append(args, "--extractor-args", extra)
+	}
+	args = append(args, url)
+	out, err := exec.Command(bin, args...).Output()
 	if err != nil {
 		return playlistMetadata{}, err
 	}
@@ -636,6 +648,54 @@ func sanitizeDirName(s string) string {
 // sanitizeFilename removes characters unsafe for filenames.
 func sanitizeFilename(s string) string {
 	return sanitizeDirName(s)
+}
+
+// syndicationFallback reports the twitter:api=syndication --extractor-args
+// value for public X/Twitter URLs. Guest GraphQL against api.x.com often fails
+// with TLS EOF / Cloudflare; the syndication embed API still returns public
+// videos. Any user-pinned twitter:api (string or list form) wins instead.
+func (o Options) syndicationFallback(rawURL string) (string, bool) {
+	if !isTwitterURL(rawURL) {
+		return "", false
+	}
+	for _, v := range append([]string{o.ExtractorArgs}, o.ExtractorArgsValues...) {
+		if hasTwitterAPIArg(v) {
+			return "", false
+		}
+	}
+	return "twitter:api=syndication", true
+}
+
+func hasTwitterAPIArg(userArgs string) bool {
+	return strings.Contains(strings.ToLower(userArgs), "twitter:api=")
+}
+
+func isTwitterURL(raw string) bool {
+	host := hostnameOf(raw)
+	switch host {
+	case "twitter.com", "x.com", "vxtwitter.com", "fxtwitter.com", "nitter.net":
+		return true
+	default:
+		return strings.HasSuffix(host, ".twitter.com")
+	}
+}
+
+func hostnameOf(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+	parsed, err := url.Parse(s)
+	if err != nil || parsed.Host == "" {
+		parsed, err = url.Parse("https://" + s)
+		if err != nil {
+			return ""
+		}
+	}
+	host := strings.ToLower(parsed.Hostname())
+	host = strings.TrimPrefix(host, "www.")
+	host = strings.TrimPrefix(host, "mobile.")
+	return host
 }
 
 func normalizeURL(s string) string {
