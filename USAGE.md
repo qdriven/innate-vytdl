@@ -1,99 +1,99 @@
-# vYtDL Usage
+# vYtDL 使用文档
 
-Go CLI / TUI wrapper around [yt-dlp](https://github.com/yt-dlp/yt-dlp). vYtDL does **not** reimplement downloaders — it spawns yt-dlp, simplifies everyday flags, and adds playlist resume, TUI progress, and download records.
+Go CLI / TUI，封装 [yt-dlp](https://github.com/yt-dlp/yt-dlp)。vYtDL **不重新实现下载器** —— 它调度 yt-dlp 子进程，简化日常参数，并补充播放列表断点续传、TUI 进度和下载记录。
 
-**Full guide for YouTube and Bilibili** is below. Other sites (TikTok, X, 小红书, …) use the same CLI; see [Multi-site tips](#other-sites).
+**YouTube 与 Bilibili 的完整指南**见下文；其他站点（TikTok、X、小红书…）用法相同，见[多站点](#多站点)一节。
 
 ---
 
-## Quick start
+## 快速开始
 
 ```bash
-cd vYtDL-standalone   # or tools/vytdl-cli in the monorepo
-go build -o vYtDL .  # GOWORK=off if inside a go.work
+cd innate-vytdl
+go build -o vYtDL .
 
-./vYtDL download --install-yt-dlp   # optional: cache a fresh yt-dlp
+./vYtDL download --install-yt-dlp   # 可选：缓存一份新的 yt-dlp
 
-# YouTube single video (1080p, EN+ZH subs by default)
+# YouTube 单视频（1080p，默认 EN+ZH 字幕）
 ./vYtDL download --no-tui -o ./downloads -q 1080 \
   --cookies-from-browser chrome \
   "https://www.youtube.com/watch?v=VIDEO_ID"
 
-# Bilibili multi-P / collection
+# Bilibili 多 P / 合集
 ./vYtDL download --no-tui -o ./downloads -q 1080 --playlist \
   --cookies-from-browser chrome \
   "https://www.bilibili.com/video/BVxxxxxx"
 ```
 
-Defaults worth knowing:
+值得了解的默认值：
 
-| Default | Value |
+| 默认 | 值 |
 |---------|--------|
-| Container | `-f mp4` |
-| Subtitles | EN + ZH, including auto-subs |
-| JS runtime (YouTube) | `--js-runtimes node` |
-| Concurrency | `-j 1` (sequential) |
-| Progress | TUI (use `--no-tui` for plain text) |
-| Records | `download_record.json` + `subtitle_mapping.json` |
+| 容器 | `-f mp4` |
+| 字幕 | EN + ZH（含自动字幕） |
+| JS 运行时（YouTube） | `--js-runtimes node` |
+| 并发 | `-j 1`（串行） |
+| 进度 | TUI（`--no-tui` 为纯文本） |
+| 记录 | `download_record.json` + `subtitle_mapping.json` |
 
 ---
 
-## How it works (implementation)
+## 工作原理（实现）
 
 ```
 ./vYtDL download [flags] URL…
         │
         ▼
-  cmd/download.go          parse flags → downloader.Options
+  cmd/download.go          解析 flags → downloader.Options
         │
         ▼
-  internal/ytdlpbin        resolve yt-dlp binary
+  internal/ytdlpbin        解析 yt-dlp 二进制
         │
         ▼
   internal/downloader      buildArgs() → exec yt-dlp
-        │                    parse --newline progress
-        │                    optional playliststate resume
+        │                    解析 --newline 进度
+        │                    可选 playliststate 续传
         ▼
-  internal/record         append download_record + subtitle_mapping
-  internal/tui (optional)  Bubble Tea progress
+  internal/record          追加 download_record + subtitle_mapping
+  internal/tui (可选)       Bubble Tea 进度
 ```
 
-### Flag → yt-dlp mapping
+### 参数 → yt-dlp 映射
 
-| vYtDL flag | yt-dlp equivalent (approx.) |
+| vYtDL 参数 | yt-dlp 等价（近似） |
 |-----------|------------------------------|
 | `-q 1080` | `-f "bestvideo[height<=1080]+bestaudio/best[height<=1080]"` |
 | `-f mp4` | `--merge-output-format mp4` |
 | `-o ./dir` | `-o "./dir/%(title)s.%(ext)s"` |
-| (default subs) | `--write-subs --write-auto-subs --sub-langs en,zh` |
+| （默认字幕） | `--write-subs --write-auto-subs --sub-langs en,zh` |
 | `--start` / `--end` | `--download-sections "*START-END" --force-keyframes-at-cuts` |
-| `--no-playlist` (default) | `--no-playlist` |
-| `--playlist` | playlist mode + titled subdir + `.playlist_state.json` |
-| `--cookies-from-browser` | same |
-| `--cookies` | same |
-| `--proxy` | same |
-| `--extractor-args` | same |
-| `--js-runtimes node` | same (default in vYtDL) |
-| `--retries` / `--socket-timeout` / `--force-ipv4` | same |
+| `--no-playlist`（默认） | `--no-playlist` |
+| `--playlist` | 播放列表模式 + 标题子目录 + `.playlist_state.json` |
+| `--cookies-from-browser` | 相同 |
+| `--cookies` | 相同 |
+| `--proxy` | 相同 |
+| `--extractor-args` | 相同（X/Twitter 链接自动追加 `twitter:api=syndication`，除非用户设置了 `twitter:api`） |
+| `--js-runtimes node` | 相同（vYtDL 默认） |
+| `--retries` / `--socket-timeout` / `--force-ipv4` | 相同 |
 
-Code path: `cmd/download.go` → `internal/downloader/options.go` → `buildArgs()` in `internal/downloader/downloader.go`.
+代码路径：`cmd/download.go` → `internal/downloader/options.go` → `buildArgs()`（`internal/downloader/downloader.go`）。
 
-### yt-dlp binary resolution
+### yt-dlp 二进制解析
 
-Order (`internal/ytdlpbin`):
+顺序（`internal/ytdlpbin`）：
 
 1. `--yt-dlp-bin` / `config.json` `yt_dlp_bin` / `YT_DL_BIN`
-2. `yt-dlp` / `youtube-dl` on `PATH`
-3. Embedded binary (`-tags embed_ytdlp`)
-4. Cache: `~/Library/Caches/vYtDL` (macOS) or `~/.cache/vYtDL`
-5. GitHub Releases auto-download
+2. PATH 上的 `yt-dlp` / `youtube-dl`
+3. 内嵌二进制（`-tags embed_ytdlp`）
+4. 缓存：`~/Library/Caches/vYtDL`（macOS）或 `~/.cache/vYtDL`
+5. GitHub Releases 自动下载
 
 ```bash
 ./vYtDL download --install-yt-dlp
 export VYTDL_YTDLP_MIRROR="https://ghproxy.net/https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
 ```
 
-Empty `yt_dlp_bin` in config means “auto-resolve”. Copy `config.example.json` only when you need a fixed path:
+`config.json` 中 `yt_dlp_bin` 为空表示"自动解析"。仅当需要固定路径时才复制 `config.example.json`：
 
 ```json
 { "yt_dlp_bin": "/opt/homebrew/bin/yt-dlp" }
@@ -103,41 +103,41 @@ Empty `yt_dlp_bin` in config means “auto-resolve”. Copy `config.example.json
 
 ## YouTube
 
-### URL shapes
+### URL 形态
 
-| Kind | Example |
+| 类型 | 示例 |
 |------|---------|
 | Watch | `https://www.youtube.com/watch?v=VIDEO_ID` |
-| Short URL | `https://youtu.be/VIDEO_ID` |
+| 短链 | `https://youtu.be/VIDEO_ID` |
 | Shorts | `https://www.youtube.com/shorts/VIDEO_ID` |
-| Playlist | `https://www.youtube.com/playlist?list=PLxxxx` |
-| Mix / radio | `list=RD…` — prefer default `--no-playlist` for a single watch URL |
+| 播放列表 | `https://www.youtube.com/playlist?list=PLxxxx` |
+| Mix / 电台 | `list=RD…` — 单视频 Watch 链接保持默认 `--no-playlist` |
 
-Escaped shell URLs like `watch\?v\=ID` are normalized automatically.
+转义过的 URL（如 `watch\?v\=ID`）会自动归一化。
 
-### Single video
+### 单视频
 
 ```bash
-# Best quality under 1080p, EN+ZH subs, plain progress
+# 1080p 以下最高画质，EN+ZH 字幕，纯文本进度
 ./vYtDL download --no-tui -o ./downloads -q 1080 \
   --cookies-from-browser chrome \
   "https://www.youtube.com/watch?v=N2GFDDZtGQY"
 
-# Clip (needs FFmpeg)
+# 片段裁剪（需 FFmpeg）
 ./vYtDL download --no-tui -o ./downloads \
   --start 00:01:00 --end 00:02:30 \
   "https://www.youtube.com/watch?v=VIDEO_ID"
 
-# No subtitles
+# 不要字幕
 ./vYtDL download --no-tui -o ./downloads --no-subs \
   "https://www.youtube.com/watch?v=VIDEO_ID"
 
-# Only Chinese subs
+# 只要中文字幕
 ./vYtDL download --no-tui -o ./downloads --sub-langs zh \
   "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
-Equivalent raw yt-dlp (what vYtDL approximates):
+等价的裸 yt-dlp 命令（vYtDL 近似还原的目标）：
 
 ```bash
 yt-dlp -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]" \
@@ -149,7 +149,7 @@ yt-dlp -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]" \
   "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
-### Playlist
+### 播放列表
 
 ```bash
 ./vYtDL download --no-tui --playlist -o ./downloads -q 720 \
@@ -157,13 +157,13 @@ yt-dlp -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]" \
   "https://www.youtube.com/playlist?list=PLxxxx"
 ```
 
-What happens:
+流程：
 
-1. Fetch playlist metadata.
-2. Create `./downloads/<Playlist Title>/`.
-3. Write `.playlist_state.json` and download entry-by-entry.
-4. Re-run the **same** command to resume; succeeded items are skipped.
-5. `--reset-playlist-state` discards state and starts over.
+1. 拉取播放列表元数据。
+2. 创建 `./downloads/<播放列表标题>/`。
+3. 写入 `.playlist_state.json`，逐条下载。
+4. **重跑同一命令即可续传**；已成功条目自动跳过。
+5. `--reset-playlist-state` 丢弃状态、从头开始。
 
 ```text
 ./downloads/My Playlist/
@@ -175,19 +175,19 @@ What happens:
 ./downloads/subtitle_mapping.json
 ```
 
-### YouTube anti-bot / 403 / “n challenge”
+### YouTube 反爬 / 403 / “n challenge”
 
-YouTube increasingly requires a **JS runtime** to solve the `n` parameter challenge. vYtDL defaults to `--js-runtimes node`.
+YouTube 越来越多地要求 **JS 运行时**来解 `n` 参数挑战。vYtDL 默认传 `--js-runtimes node`。
 
-| Symptom | Fix |
+| 症状 | 处理 |
 |---------|-----|
-| `No supported JavaScript runtime` / `n challenge solving failed` | Install Node.js, or `brew install deno` and pass `--js-runtimes deno` |
-| `HTTP Error 403` on formats | Update yt-dlp; add `--cookies-from-browser chrome`; optionally `--extractor-args` |
-| `Sign in to confirm you're not a bot` | Cookies from a logged-in browser profile |
-| `The page needs to be reloaded` | Fresh yt-dlp + node + cookies |
-| SSL / proxy errors | Fix proxy env, or `--proxy`, or `--force-ipv4` |
+| `No supported JavaScript runtime` / `n challenge solving failed` | 装 Node.js，或 `brew install deno` 后传 `--js-runtimes deno` |
+| 格式列表 `HTTP Error 403` | 更新 yt-dlp；加 `--cookies-from-browser chrome`；必要时 `--extractor-args` |
+| `Sign in to confirm you're not a bot` | 用已登录浏览器 profile 的 cookie |
+| `The page needs to be reloaded` | 更新 yt-dlp + node + cookie |
+| SSL / 代理错误 | 修代理环境变量，或 `--proxy`，或 `--force-ipv4` |
 
-Recommended recovery command:
+推荐恢复命令：
 
 ```bash
 ./vYtDL download --no-tui -o ./downloads -q 1080 \
@@ -200,14 +200,14 @@ Recommended recovery command:
   "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
-Keep yt-dlp current:
+保持 yt-dlp 新：
 
 ```bash
 ./vYtDL download --install-yt-dlp
-# or: python3 -m pip install -U --user --break-system-packages yt-dlp
+# 或: python3 -m pip install -U --user --break-system-packages yt-dlp
 ```
 
-### Concurrent YouTube URLs
+### 多 URL 并发
 
 ```bash
 ./vYtDL download --no-tui -j 2 -o ./downloads \
@@ -216,25 +216,25 @@ Keep yt-dlp current:
   "https://www.youtube.com/watch?v=ID2"
 ```
 
-Higher `-j` increases bot-check risk; prefer `1–3`.
+`-j` 越高越容易触发 bot 检查；建议 `1–3`。
 
 ---
 
 ## Bilibili（哔哩哔哩）
 
-### URL shapes
+### URL 形态
 
-| Kind | Example |
+| 类型 | 示例 |
 |------|---------|
-| Single / multi-P | `https://www.bilibili.com/video/BVxxxxxx` |
-| `av` id | `https://www.bilibili.com/video/av123456` |
-| Short link | `https://b23.tv/xxxxx` |
-| Season / bangumi | `https://www.bilibili.com/bangumi/play/ss…` or `ep…` |
-| Favorites / collections | use `--playlist` |
+| 单视频 / 多 P | `https://www.bilibili.com/video/BVxxxxxx` |
+| `av` 号 | `https://www.bilibili.com/video/av123456` |
+| 短链 | `https://b23.tv/xxxxx` |
+| 番剧 / 季 | `https://www.bilibili.com/bangumi/play/ss…` 或 `ep…` |
+| 收藏夹 / 合集 | 用 `--playlist` |
 
-Multi-part（分 P）videos share one BV URL. Use `--playlist` to download all parts into a titled subdirectory with resume.
+多 P（分 P）视频共用一个 BV 链接。用 `--playlist` 把所有分 P 下到一个标题子目录并支持续传。
 
-### Single video (one P)
+### 单视频（单 P）
 
 ```bash
 ./vYtDL download --no-tui -o ./downloads -q 1080 \
@@ -242,35 +242,35 @@ Multi-part（分 P）videos share one BV URL. Use `--playlist` to download all p
   "https://www.bilibili.com/video/BV1xx411c7mD"
 ```
 
-Without `--playlist`, only the default / current part is fetched (`--no-playlist`).
+不带 `--playlist` 时只下载默认 / 当前分 P（`--no-playlist`）。
 
-### Multi-P / collection / season
+### 多 P / 合集 / 番剧
 
 ```bash
-# All parts under one BV
+# 一个 BV 下的全部分 P
 ./vYtDL download --no-tui --playlist -o ./downloads -q 1080 \
   --cookies-from-browser chrome \
   "https://www.bilibili.com/video/BVxxxxxx"
 
-# Bangumi / season episode list
+# 番剧 / 剧集列表
 ./vYtDL download --no-tui --playlist -o ./downloads -q 1080 \
   --cookies-from-browser chrome \
   "https://www.bilibili.com/bangumi/play/ss12345"
 ```
 
-Resume is the same as YouTube playlists: re-run the identical command; state lives in:
+续传方式与 YouTube 播放列表相同：重跑同一命令；状态在：
 
 ```text
 ./downloads/<标题>/.playlist_state.json
 ```
 
-### Cookies and VIP / region
+### Cookie 与大会员 / 地区
 
-| Need | Approach |
+| 需求 | 方案 |
 |------|----------|
-| Higher quality / 大会员 | `--cookies-from-browser chrome` (logged-in bilibili.com session) |
-| Netscape file | `--cookies ./cookies.txt` |
-| Restricted region | `--proxy "http://127.0.0.1:7890"` |
+| 更高画质 / 大会员 | `--cookies-from-browser chrome`（已登录 bilibili.com 的会话） |
+| Netscape cookie 文件 | `--cookies ./cookies.txt` |
+| 地区限制 | `--proxy "http://127.0.0.1:7890"` |
 
 ```bash
 ./vYtDL download --no-tui --playlist -o ./downloads -q 1080 \
@@ -279,16 +279,16 @@ Resume is the same as YouTube playlists: re-run the identical command; state liv
   "https://www.bilibili.com/video/BVxxxxxx"
 ```
 
-### Bilibili vs YouTube behavior notes
+### Bilibili 与 YouTube 的行为差异
 
-| Topic | Notes |
+| 主题 | 说明 |
 |-------|--------|
-| Subtitles | Official / CC tracks vary; auto-subs less common than YouTube. Defaults still request `en,zh`. |
-| Titles | Chinese titles are fine; filesystem-safe sanitization applies on playlist dirs. |
-| Entry URLs | Playlist entries use `webpage_url` from yt-dlp; vYtDL must not invent `youtube.com/watch` URLs. |
-| Quality | `-q 1080` still maps to height filter; actual max depends on login / VIP. |
+| 字幕 | 官方 / CC 轨道不定；自动字幕比 YouTube 少。默认仍请求 `en,zh`。 |
+| 标题 | 中文标题没问题；播放列表目录会做文件系统安全清洗。 |
+| 条目 URL | 播放列表条目使用 yt-dlp 的 `webpage_url`；vYtDL 不会伪造 `youtube.com/watch` URL。 |
+| 画质 | `-q 1080` 仍是高度过滤；实际上限取决于登录 / 大会员。 |
 
-Equivalent raw yt-dlp:
+等价裸 yt-dlp：
 
 ```bash
 yt-dlp -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]" \
@@ -297,82 +297,109 @@ yt-dlp -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]" \
   --cookies-from-browser chrome \
   -o "./downloads/%(title)s.%(ext)s" \
   "https://www.bilibili.com/video/BVxxxxxx"
-
-# vYtDL
-./vYtDL download --no-tui -o ./downloads -q 1080 \
-  --cookies-from-browser chrome \
-  "https://www.bilibili.com/video/BVxxxxxx"
 ```
 
 ---
 
-## Build
+## X / Twitter
+
+公开推文**无需任何额外参数**：vYtDL 自动追加 `twitter:api=syndication`（guest GraphQL API 对 api.x.com 经常报 TLS EOF / Cloudflare 拦截，syndication embed API 仍可拿到公开视频）。
 
 ```bash
-# Host binary
-go build -trimpath -ldflags "-s -w" -o vYtDL .
-# or: task build
+# X / Twitter 公开视频 — 开箱即用
+./vYtDL download --no-tui -o ./downloads \
+  "https://x.com/user/status/123"
 
-# Cross-compile (macOS / Linux / Windows amd64+arm64)
+# 私密 / NSFW 推文仍需 cookie；显式 extractor-args 会关闭 syndication 回退
+./vYtDL download --no-tui -o ./downloads --cookies-from-browser chrome \
+  --extractor-args "twitter:api=graphql" \
+  "https://x.com/user/status/123"
+```
+
+识别的域名：`x.com`、`twitter.com`（含子域）、`vxtwitter.com`、`fxtwitter.com`、`nitter.net`。用户显式传入任何 `twitter:api=` 时自动回退失效（用户优先）。
+
+---
+
+## 多站点
+
+同一个 CLI；TikTok / 小红书 / Instagram 通常需要 cookie。
+
+```bash
+./vYtDL download --no-tui -o ./downloads --cookies-from-browser chrome \
+  "https://www.tiktok.com/@user/video/123"
+
+./vYtDL download --no-tui -o ./downloads --cookies-from-browser chrome \
+  "https://www.xiaohongshu.com/explore/xxxxxx"
+```
+
+列出全部 extractor：`yt-dlp --list-extractors`。
+
+---
+
+## 构建
+
+```bash
+# 本机二进制
+go build -trimpath -ldflags "-s -w" -o vYtDL .
+# 或: task build
+
+# 交叉编译（macOS / Linux / Windows amd64+arm64）
 ./scripts/build.sh
 ONLY=windows ./scripts/build.sh
-# task build:windows          (standalone Taskfile)
-# task cli:build:windows      (monorepo root Taskfile)
+# task build:windows
+# PowerShell: .\scripts\build.ps1 -Only windows
 
-# PowerShell
-.\scripts\build.ps1 -Only windows
-
-# Embed yt-dlp into the binary
+# 内嵌 yt-dlp
 ./scripts/fetch-ytdlp.sh --embed
 go build -tags embed_ytdlp -o vYtDL .
 EMBED=1 ONLY=windows ./scripts/build.sh
 ```
 
-Artifacts: `dist/vYtDL-<os>-<arch>[.exe]`. Download outputs (`*.mp4`, `*.part`, `*.ytdl`, records) are gitignored.
+产物：`dist/vYtDL-<os>-<arch>[.exe]`。下载产物（`*.mp4`、`*.part`、`*.ytdl`、记录文件）已被 gitignore。
 
 ---
 
-## Playlist resume (any site)
+## 播放列表续传（任意站点）
 
-Implementation (`internal/playliststate` + `DownloadPlaylist`):
+实现（`internal/playliststate` + `DownloadPlaylist`）：
 
-1. Dump playlist entries once.
-2. Persist queue + per-item status in `.playlist_state.json`.
-3. Skip `succeeded`; retry `failed` / unfinished.
-4. `--reset-playlist-state` clears the file.
+1. 一次性 dump 播放列表条目。
+2. 队列 + 每条状态持久化到 `.playlist_state.json`。
+3. 跳过 `succeeded`；重试 `failed` / 未完成。
+4. `--reset-playlist-state` 清除状态文件。
 
 ```bash
 ./vYtDL download --no-tui --playlist -o ./downloads \
   "https://www.youtube.com/playlist?list=PLxxxx"
-# interrupt, then re-run the same command
+# 中断后重跑同一命令即续传
 ```
 
 ---
 
-## Concurrent downloads
+## 并发下载
 
 ```bash
 ./vYtDL download --no-tui -j 3 -o ./downloads \
   "URL1" "URL2" "URL3"
 ```
 
-Worker pool with semaphore (`cmd/download.go`). Records are mutex-protected.
+信号量 worker pool（`cmd/download.go`）。记录文件有互斥保护。
 
 ---
 
-## Output files
+## 输出文件
 
-| File | Purpose |
+| 文件 | 用途 |
 |------|---------|
-| `download_record.json` / `.csv` | success/fail, URL, paths, errors, timing |
-| `subtitle_mapping.json` / `.csv` | video ↔ subtitle paths |
-| `<playlist>/.playlist_state.json` | resume queue |
+| `download_record.json` / `.csv` | 成功/失败、URL、路径、错误、耗时 |
+| `subtitle_mapping.json` / `.csv` | 视频 ↔ 字幕路径 |
+| `<playlist>/.playlist_state.json` | 续传队列 |
 
-Change names/format with `--record-file`, `--mapping-file`, `--log-format csv`.
+用 `--record-file`、`--mapping-file`、`--log-format csv` 改名 / 换格式。
 
 ---
 
-## Subtitle analysis
+## 字幕分析
 
 ```bash
 ./vYtDL analyze --mode text video.en.vtt
@@ -380,73 +407,42 @@ Change names/format with `--record-file`, `--mapping-file`, `--log-format csv`.
 ./vYtDL analyze < video.vtt
 ```
 
-Handles YouTube auto-generated VTT (`<c>` tags). Aliases: `an`, `ana`.
+支持 YouTube 自动生成 VTT（`<c>` 标签）。别名：`an`、`ana`。
 
 ---
 
-## Background service (`serve`)
+## 后台服务（serve）
 
-`serve` runs the vYtDL daemon: an HTTP API + WebSocket server that owns the
-download queue, SQLite persistence, VTT analysis, and optional static frontend
-hosting. It is the single backend for the web UI (see
-`docs/refactor/sprint-0/` in the monorepo).
+`serve` 启动 vYtDL daemon：HTTP API + WebSocket 服务，负责下载队列、SQLite 持久化、VTT 分析，可选静态托管前端导出。它是 Web / 桌面前端的唯一后端。
 
 ```bash
-# Desktop-shell style: random loopback port, serve the exported frontend
+# 桌面壳模式：随机回环端口，托管前端导出目录
 ./vYtDL serve --port 0 --static ./out
 
-# Docker deployment: all interfaces, fixed port
+# Docker 部署：全接口 + 固定端口
 ./vYtDL serve --host 0.0.0.0 --port 3000 --static /app/out --home /app/data
 
-# Local dev: request logging
+# 本地开发：请求日志
 ./vYtDL serve --dev --home ./.daemon-home
 ```
 
-| Flag | Default | Meaning |
+| 参数 | 默认 | 含义 |
 |------|---------|---------|
-| `--port` | `0` (`PORT` env) | Listen port; `0` picks a random free port |
-| `--host` | `127.0.0.1` (`VYTDL_HOST`) | Bind address; `0.0.0.0` for Docker |
-| `--static` | `VYTDL_STATIC_DIR` | Serve the exported frontend from this dir (SPA fallback included) |
-| `--home` | `~/.vytdl` (`VYTDL_HOME`) | Data root — `vytdl.db` and logs live here |
-| `--dev` | off | Request logging |
+| `--port` | `0`（`PORT` 环境变量） | 监听端口；`0` = 随机空闲端口 |
+| `--host` | `127.0.0.1`（`VYTDL_HOST`） | 绑定地址；Docker 用 `0.0.0.0` |
+| `--static` | `VYTDL_STATIC_DIR` | 从该目录托管前端导出（含 SPA 回退） |
+| `--home` | `~/.vytdl`（`VYTDL_HOME`） | 数据根目录 — `vytdl.db` 与日志在此 |
+| `--dev` | 关 | 请求日志 |
 
-Notes:
+说明：
 
-- Default download dir is `<home>/downloads` (override: `VYTDL_OUTPUT_DIR`).
-- The API mirrors the previous web backend one-to-one (`POST /api/start-download`,
-  `GET /api/downloads`, `WS /api/ws`, …) — the existing web frontend works unchanged.
-- On startup the daemon resumes downloads that were `pending`/`downloading`
-  when it last stopped (their serialized options are stored in the `options`
-  column). `GET /api/health` reports readiness for the desktop shell.
+- 默认下载目录为 `<home>/downloads`（可用 `VYTDL_OUTPUT_DIR` 覆盖）。
+- API 与 Web 后端一一对应（`POST /api/start-download`、`GET /api/downloads`、`WS /api/ws` 等）—— 现有 Web 前端无需改动。
+- daemon 启动时会恢复上次停止时处于 `pending` / `downloading` 状态的下载（序列化选项存在 `options` 列）。`GET /api/health` 供桌面壳做就绪探测。
 
 ---
 
-## Other sites
-
-Same CLI; cookies often required for TikTok / 小红书 / Instagram. **X / Twitter** public videos use the syndication embed API automatically (`twitter:api=syndication`) because the guest GraphQL API frequently fails with TLS/Cloudflare errors.
-
-```bash
-./vYtDL download --no-tui -o ./downloads --cookies-from-browser chrome \
-  "https://www.tiktok.com/@user/video/123"
-
-# X / Twitter — no extra flags needed for public posts
-./vYtDL download --no-tui -o ./downloads \
-  "https://x.com/user/status/123"
-
-# Private / NSFW tweets still need cookies; this also disables the syndication fallback
-./vYtDL download --no-tui -o ./downloads --cookies-from-browser chrome \
-  --extractor-args "twitter:api=graphql" \
-  "https://x.com/user/status/123"
-
-./vYtDL download --no-tui -o ./downloads --cookies-from-browser chrome \
-  "https://www.xiaohongshu.com/explore/xxxxxx"
-```
-
-List extractors: `yt-dlp --list-extractors`. See also `docs/suggestions/supported-platforms.md` in the monorepo.
-
----
-
-## Shell wrappers
+## Shell 封装
 
 ```bash
 ./scripts/download_video.sh "https://www.youtube.com/watch?v=ID" ./downloads 1080
@@ -455,25 +451,25 @@ List extractors: `yt-dlp --list-extractors`. See also `docs/suggestions/supporte
 
 ---
 
-## Passthrough flags
+## 透传参数
 
 - `--yt-dlp-bin`
 - `--proxy`
 - `--cookies` / `--cookies-from-browser`
 - `--user-agent`
 - `--extractor-args`
-- `--js-runtimes` (default `node`)
+- `--js-runtimes`（默认 `node`）
 - `--retries` / `--socket-timeout` / `--force-ipv4`
 
 ---
 
-## Troubleshooting
+## 排障速查
 
-| Problem | Action |
+| 问题 | 处理 |
 |--------|--------|
-| yt-dlp missing | `--install-yt-dlp`, embed build, or set `--yt-dlp-bin` |
-| GitHub slow | `VYTDL_YTDLP_MIRROR` |
-| YouTube 403 / n-challenge | Node/Deno + cookies + update yt-dlp (see [YouTube](#youtube)) |
-| Bilibili low quality | Login cookies / VIP |
-| Playlist resumes wrong items | Same `-o` and URL; or `--reset-playlist-state` |
-| go.work errors | `GOWORK=off go build …` or use Taskfile (`env.GOWORK=off`) |
+| yt-dlp 缺失 | `--install-yt-dlp`、内嵌构建，或 `--yt-dlp-bin` |
+| GitHub 慢 | `VYTDL_YTDLP_MIRROR` |
+| YouTube 403 / n-challenge | Node/Deno + cookie + 更新 yt-dlp（见 [YouTube](#youtube)） |
+| Bilibili 画质低 | 登录 cookie / 大会员 |
+| 播放列表续传错乱 | 相同 `-o` 与 URL 重跑；或 `--reset-playlist-state` |
+| X/Twitter 拿不到公开视频 | 默认自动 syndication；仍失败则更新 yt-dlp，私密内容加 cookie |
