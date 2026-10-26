@@ -23,7 +23,7 @@ instructions per tool: `docs/skills-guide.md`.
 
 ## Rules of thumb
 
-- Prefer changing `internal/downloader` for yt-dlp behavior; keep Desktop/Web out of this repo.
+- Prefer changing `internal/downloader` for yt-dlp behavior; `internal/server` is the `serve` daemon (HTTP API + WS + queue + SQLite).
 - Do not add a URL domain whitelist — site coverage is yt-dlp's job.
 - Pass through cookie/proxy/extractor-args rather than reimplementing auth.
 - Update `USAGE.md` (and the skill if user-facing) when adding user-facing flags.
