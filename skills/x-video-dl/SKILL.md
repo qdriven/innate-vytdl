@@ -1,6 +1,6 @@
 ---
 name: x-video-dl
-description: "下载 X (Twitter / 推特) 推文中的视频到本地：yt-dlp + 浏览器 cookie 鉴权，自动选最高画质并合并音轨。当用户给出 x.com / twitter.com / t.co 链接并要求下载、保存、抓取视频时使用，也适用于「把这个推文视频存下来」「下载这个视频」并附带推文链接的场景。"
+description: "下载 X (Twitter) 单条推文中的视频：yt-dlp + 浏览器 cookie，选最高画质并合并音轨。用户给出 x.com / twitter.com / t.co 的 status 链接，或只给 handle、主页、/media、要求下载某账号近几个月的全部视频时使用。只给账号名不能枚举时间线。"
 ---
 
 # X Video Download
@@ -40,12 +40,42 @@ scripts/x_dl.sh "https://x.com/IndianaFever/status/2099166214639513805"
 - 已存在的同名文件自动跳过（`--no-overwrites`）
 - 链接末尾混入的杂字符（如多粘了一个字母 `...3805m`、中文句号）yt-dlp 能自行容忍/脚本会清理常见包裹符
 
+## 只给 handle 时
+
+不能按账号批量下载，也不能筛「近 3 个月」。本脚本和 vYtDL 都只接受**单条推文**。
+
+本机 yt-dlp 2026.08.19 的 X extractor 只有 `twitter`、`twitter:card`、`twitter:amplify`、`twitter:broadcast`、`twitter:spaces`、`twitter:shortener`。`twitter` 要求地址里有 `/status/<id>` 或 `/statuses/<id>`。下面这些地址对不上，不要传给脚本：
+
+- `https://x.com/<handle>`
+- `https://x.com/<handle>/media`
+- 只有一个 @handle、没有 status id
+
+原因：
+
+- syndication（vYtDL 对公开推文的默认接口）按一条推文取视频，没有用户时间线接口。
+- `--playlist` 不会去扫该账号的发帖。主页导不出条目时，vYtDL 会把这个 URL 当成一条去下。
+- CLI 没有 `--dateafter`，近 3 个月无法在这里过滤。
+
+用户已经有多条 status 链接时，可以逐条传入本脚本，或一次传给 `vYtDL download`。一条推文里有多段视频时，yt-dlp 把它看成小播放列表；用 vYtDL 要给**这一条 status** 加 `--playlist`，默认 `--no-playlist` 只下其中一段。
+
+保护账号、年龄限制、仅登录可见的推文，syndication 拿不到。这时用本脚本（浏览器 cookie），或：
+
+```bash
+./vYtDL download --no-tui -o ./downloads \
+  --cookies-from-browser chrome \
+  --extractor-args "twitter:api=graphql" \
+  "https://x.com/user/status/123"
+```
+
+显式 `twitter:api=` 会关掉 syndication 回退。
+
 ## Agent 工作流
 
-1. 从用户消息中取出推文链接（x.com / twitter.com / t.co 均可），直接传给脚本
-2. 运行脚本下载，等待完成
-3. 用 ffprobe 验证并报告：文件路径、分辨率、时长、大小
-4. 输出文件中的推文 ID 与用户链接中的不同属**正常**：用户给的常是引用推文，视频属于被引的原推，yt-dlp 会自动跟随
+1. 只有 handle、主页或「近 N 个月全部视频」时：说明做不到，请用户给出 `status` 链接。不要把主页 URL 交给脚本或 `--playlist`。
+2. 从用户消息中取出推文链接（x.com / twitter.com / t.co 的 status 或短链），直接传给脚本。多条就多传几个参数。
+3. 运行脚本下载，等待完成
+4. 用 ffprobe 验证并报告：文件路径、分辨率、时长、大小
+5. 输出文件中的推文 ID 与用户链接中的不同属**正常**：用户给的常是引用推文，视频属于被引的原推，yt-dlp 会自动跟随
 
 ```bash
 ffprobe -v quiet -show_entries format=duration,size \

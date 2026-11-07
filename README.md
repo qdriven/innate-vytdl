@@ -2,7 +2,7 @@
 
 Go CLI / TUI，封装 [yt-dlp](https://github.com/yt-dlp/yt-dlp)，支持 **1800+ 站点**（YouTube、Bilibili、TikTok、X/Twitter、Instagram、Vimeo、Twitch、小红书…）的视频下载；并自带 **`vYtDL serve` 后台服务**（HTTP API + WebSocket + 下载队列 + SQLite），是 Web / 桌面前端的唯一后端。
 
-vYtDL **不重新实现下载器**：它把 yt-dlp 作为子进程调度，简化日常参数（`-q 1080`、默认 EN/ZH 字幕、`-o` 目录），并补充播放列表断点续传、TUI 进度、下载记录，以及按需自动安装 yt-dlp。
+vYtDL **不重新实现下载器**：它把 yt-dlp 作为子进程调度，简化日常参数（`-q 1080`、默认 EN/ZH 字幕、`-o` 目录），并补充播放列表断点续传、TUI 进度、统一下载记录，以及按需自动安装 yt-dlp。
 
 本项目完全独立，不依赖其他仓库。基于 DSH 插件模式的桌面版 / Web UI（宿主 + 插件架构）见 innate-keepthem 仓库的 vYtDL 产品线，架构渊源见 [`docs/dsh-plugin-model.md`](./docs/dsh-plugin-model.md)。
 
@@ -55,28 +55,40 @@ go build -tags embed_ytdlp -o vYtDL .
 
 ## Skills（Agent Skill）
 
-本项目自带两个可安装到 AI Agent 工具（WorkBuddy / zcode / Kimi Code / Cursor / Codex / Trae…）的 Skill：
+本项目自带三个可安装到 AI Agent 工具（WorkBuddy / zcode / Kimi Code / Cursor / Codex / Trae…）的 Skill：
 
 | Skill | 用途 |
 |-------|------|
 | [`skills/vytdl-cli`](./skills/vytdl-cli/) | 构建 / 运行 / 扩展本 CLI；多站点下载排障 |
+| [`skills/download-record`](./skills/download-record/) | 查询统一下载记录（是否下过、字幕路径、失败原因） |
 | [`skills/x-video-dl`](./skills/x-video-dl/) | X/Twitter 推文视频下载（yt-dlp + 浏览器 cookie 直调） |
 
 安装方法与三个主力工具（WorkBuddy / zcode / Kimi）的任务化用法见 **[docs/skills-guide.md](./docs/skills-guide.md)**。
 
+## 下载记录
+
+CLI 和 `serve` 把每次下载写进同一个文件，字幕路径在每条记录里：
+
+```bash
+./vYtDL records            # 表格，最新在前
+./vYtDL records --json     # 含 filename 与 subtitles
+```
+
+默认路径是 `~/.vytdl/download_record.json`（可用 `VYTDL_HOME` 或 `--record-file` 改）。`serve` 的 `vytdl.db` 只保存进行中的队列；播放列表续传仍是输出目录里的 `.playlist_state.json`。
+
 ## 目录结构
 
 ```
-cmd/                 # Cobra 命令（download、analyze、serve）
+cmd/                 # Cobra 命令（download、records、analyze、serve）
 internal/downloader/ # yt-dlp 调度 + 进度解析 + 播放列表续传
 internal/ytdlpbin/   # yt-dlp 二进制解析（PATH / 内嵌 / 缓存 / 自动下载）
 internal/tui/        # Bubble Tea 进度 UI
-internal/record/     # download_record / subtitle_mapping
+internal/record/     # 统一下载记录 ~/.vytdl/download_record.json
 internal/vtt/        # VTT 解析（analyze 子命令）
 internal/server/     # serve daemon：HTTP API + WS + 队列 + SQLite
 scripts/             # 构建 + fetch-ytdlp + shell 封装
-skills/              # Agent Skill（vytdl-cli、x-video-dl）
-docs/                # skills 指南、DSH 插件模式说明
+skills/              # Agent Skill（vytdl-cli、download-record、x-video-dl）
+docs/                # B 站可下载范围、skills 指南、DSH 插件模式说明
 USAGE.md             # CLI 完整使用文档
 ```
 
@@ -85,6 +97,7 @@ USAGE.md             # CLI 完整使用文档
 | 文档 | 内容 |
 |------|------|
 | [USAGE.md](./USAGE.md) | CLI 完整使用指南（中文） |
+| [docs/bilibili.md](./docs/bilibili.md) | 当前 skill 能下载的 B 站内容，以及登录 / 画质限制 |
 | [docs/skills-guide.md](./docs/skills-guide.md) | Skill 如何配合 CLI 在 WorkBuddy / zcode / Kimi 中使用 |
 | [docs/dsh-plugin-model.md](./docs/dsh-plugin-model.md) | DSH 插件模式如何落地完成第一个项目（vYtDL 桌面版） |
 | [skills/README.md](./skills/README.md) | Skill 总览与安装 |

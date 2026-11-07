@@ -4,22 +4,26 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"sync"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/innate/yt-dl/internal/downloader"
 )
 
-// DownloadRecord is a single entry in the download log.
+const catalogVersion = 1
+
+// DownloadRecord is one download attempt. Subtitle paths live on the entry
+// so the log is a single file.
 type DownloadRecord struct {
 	VideoID    string    `json:"video_id"    csv:"video_id"`
 	Title      string    `json:"title"       csv:"title"`
 	URL        string    `json:"url"         csv:"url"`
 	OutputDir  string    `json:"output_dir"  csv:"output_dir"`
 	Filename   string    `json:"filename"    csv:"filename"`
+	Subtitles  []string  `json:"subtitles"   csv:"subtitles"`
 	Success    bool      `json:"success"     csv:"success"`
 	Error      string    `json:"error"       csv:"error"`
 	StartedAt  time.Time `json:"started_at"  csv:"started_at"`
@@ -27,23 +31,34 @@ type DownloadRecord struct {
 	Duration   string    `json:"duration"    csv:"duration"`
 }
 
-// SubtitleMapping associates a video with its subtitle files.
-type SubtitleMapping struct {
-	VideoID   string   `json:"video_id"  csv:"video_id"`
-	Title     string   `json:"title"     csv:"title"`
-	VideoFile string   `json:"video_file" csv:"video_file"`
-	Subtitles []string `json:"subtitles" csv:"subtitles"`
+// Catalog is the on-disk JSON document.
+type Catalog struct {
+	Version int              `json:"version"`
+	Records []DownloadRecord `json:"records"`
 }
 
-// FromResult converts a downloader result to a DownloadRecord.
+// subtitleMapping is the legacy sidecar format (subtitle_mapping.json/.csv).
+type subtitleMapping struct {
+	VideoID   string   `json:"video_id"`
+	Title     string   `json:"title"`
+	VideoFile string   `json:"video_file"`
+	Subtitles []string `json:"subtitles"`
+}
+
+// FromResult converts a downloader result into a catalog entry.
 func FromResult(r downloader.DownloadResult) DownloadRecord {
 	dur := r.FinishedAt.Sub(r.StartedAt).Round(time.Second).String()
+	subs := r.Subtitles
+	if subs == nil {
+		subs = []string{}
+	}
 	return DownloadRecord{
 		VideoID:    r.VideoID,
 		Title:      r.Title,
 		URL:        r.URL,
 		OutputDir:  r.OutputDir,
 		Filename:   r.Filename,
+		Subtitles:  subs,
 		Success:    r.Success,
 		Error:      r.Error,
 		StartedAt:  r.StartedAt,
@@ -52,241 +67,617 @@ func FromResult(r downloader.DownloadResult) DownloadRecord {
 	}
 }
 
-// MappingFromResult converts a result to a SubtitleMapping.
-func MappingFromResult(r downloader.DownloadResult) SubtitleMapping {
-	return SubtitleMapping{
-		VideoID:   r.VideoID,
-		Title:     r.Title,
-		VideoFile: r.Filename,
-		Subtitles: r.Subtitles,
-	}
-}
-
-// Manager maintains an in-memory list of records and mappings,
-// and flushes them to disk in JSON or CSV format.
+// Manager appends download attempts to one catalog file.
 type Manager struct {
-	format      string             // "json" or "csv"
-	recordPath  string
-	mappingPath string
-	mu          sync.Mutex
-	records     []DownloadRecord
-	mappings    []SubtitleMapping
+	format  string
+	path    string
+	mu      sync.Mutex
+	pending []DownloadRecord
 }
 
-// NewManager creates a record manager. format is "json" or "csv".
-// baseRecord / baseMapping are base filenames without extensions.
-func NewManager(format, baseRecord, baseMapping, dir string) *Manager {
-	ext := "." + format
-	m := &Manager{
-		format:      format,
-		recordPath:  filepath.Join(dir, baseRecord+ext),
-		mappingPath: filepath.Join(dir, baseMapping+ext),
+// HomeDir is the shared data root: $VYTDL_HOME or ~/.vytdl.
+func HomeDir() string {
+	if v := strings.TrimSpace(os.Getenv("VYTDL_HOME")); v != "" {
+		return v
 	}
-	m.loadExisting()
-	return m
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".vytdl"
+	}
+	return filepath.Join(home, ".vytdl")
 }
 
-// Add appends a result to both the record list and mapping list.
+// CatalogName is the file name inside a data directory.
+func CatalogName(format string) string {
+	if normalizeFormat(format) == "csv" {
+		return "download_record.csv"
+	}
+	return "download_record.json"
+}
+
+// DefaultPath is the catalog used by both the CLI and serve.
+func DefaultPath(format string) string {
+	return filepath.Join(HomeDir(), CatalogName(format))
+}
+
+// ResolvePath picks the catalog path. An empty recordFile uses DefaultPath.
+// A bare name is placed in HomeDir; a path is used as given.
+func ResolvePath(format, recordFile string) string {
+	format = normalizeFormat(format)
+	recordFile = strings.TrimSpace(recordFile)
+	if recordFile == "" {
+		return DefaultPath(format)
+	}
+	if filepath.IsAbs(recordFile) || strings.ContainsAny(recordFile, `/\`) {
+		return ensureExt(recordFile, format)
+	}
+	return filepath.Join(HomeDir(), ensureExt(recordFile, format))
+}
+
+// NewManager opens a catalog writer. The file is created on Flush.
+func NewManager(format, path string) (*Manager, error) {
+	format = normalizeFormat(format)
+	if format != "json" && format != "csv" {
+		return nil, fmt.Errorf("unsupported log format %q: use json or csv", format)
+	}
+	if strings.TrimSpace(path) == "" {
+		return nil, fmt.Errorf("record path is required")
+	}
+	return &Manager{format: format, path: path}, nil
+}
+
+// Path returns the catalog file path.
+func (m *Manager) Path() string { return m.path }
+
+// Add queues one result. Call Flush to persist.
 func (m *Manager) Add(r downloader.DownloadResult) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.records = append(m.records, FromResult(r))
-	m.mappings = append(m.mappings, MappingFromResult(r))
+	m.pending = append(m.pending, FromResult(r))
 }
 
-// Flush writes all records and mappings to disk.
+// Flush appends queued results to the catalog.
 func (m *Manager) Flush() error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	if err := m.writeRecords(); err != nil {
-		return fmt.Errorf("write records: %w", err)
+	pending := append([]DownloadRecord(nil), m.pending...)
+	m.mu.Unlock()
+	if len(pending) == 0 {
+		return nil
 	}
-	if err := m.writeMappings(); err != nil {
-		return fmt.Errorf("write mappings: %w", err)
+
+	unlock, err := lockCatalog(m.path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	existing, err := readCatalog(m.path, m.format)
+	if err != nil {
+		return err
+	}
+	merged := mergeNew(existing, pending)
+	if err := writeCatalog(m.path, m.format, merged); err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	m.pending = dropFlushed(m.pending, pending)
+	m.mu.Unlock()
+	return nil
+}
+
+// List returns the persisted catalog plus any not-yet-flushed results.
+func (m *Manager) List() ([]DownloadRecord, error) {
+	unlock, err := lockCatalog(m.path)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+
+	existing, err := readCatalog(m.path, m.format)
+	if err != nil {
+		return nil, err
+	}
+	m.mu.Lock()
+	pending := append([]DownloadRecord(nil), m.pending...)
+	m.mu.Unlock()
+	return append(existing, pending...), nil
+}
+
+// ImportLegacyDir folds download_record.* and subtitle_mapping.* from dir
+// into this catalog, then removes those files. The live catalog file is
+// never deleted. Already-imported attempts are skipped.
+func (m *Manager) ImportLegacyDir(dir string) (int, error) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return 0, nil
+	}
+
+	unlock, err := lockCatalog(m.path)
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
+
+	existing, err := readCatalog(m.path, m.format)
+	if err != nil {
+		return 0, err
+	}
+
+	type pair struct {
+		record  string
+		mapping string
+		format  string
+	}
+	pairs := []pair{
+		{filepath.Join(dir, "download_record.json"), filepath.Join(dir, "subtitle_mapping.json"), "json"},
+		{filepath.Join(dir, "download_record.csv"), filepath.Join(dir, "subtitle_mapping.csv"), "csv"},
+	}
+
+	added := 0
+	var remove []string
+	for _, p := range pairs {
+		recordSame := sameFile(p.record, m.path)
+		recordExists := fileExists(p.record)
+		mappingExists := fileExists(p.mapping)
+		if !recordExists && !mappingExists {
+			continue
+		}
+		if recordSame && !mappingExists {
+			continue
+		}
+
+		var recs []DownloadRecord
+		if recordExists && !recordSame {
+			recs, err = readCatalog(p.record, p.format)
+			if err != nil {
+				return 0, err
+			}
+		}
+		var maps []subtitleMapping
+		if mappingExists {
+			maps, err = readMappings(p.mapping, p.format)
+			if err != nil {
+				return 0, err
+			}
+		}
+
+		if recordSame {
+			n := fillSubtitles(existing, maps)
+			added += n
+		} else {
+			recs = attachMappings(recs, maps)
+			before := len(existing)
+			existing = mergeNew(existing, recs)
+			added += len(existing) - before
+			if recordExists {
+				remove = append(remove, p.record)
+			}
+		}
+		if mappingExists {
+			remove = append(remove, p.mapping)
+		}
+	}
+
+	if added > 0 {
+		if err := writeCatalog(m.path, m.format, existing); err != nil {
+			return 0, err
+		}
+	}
+	for _, path := range remove {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return added, err
+		}
+	}
+	return added, nil
+}
+
+func normalizeFormat(format string) string {
+	return strings.ToLower(strings.TrimSpace(format))
+}
+
+func ensureExt(path, format string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".json", ".csv":
+		return path
+	}
+	if format == "csv" {
+		return path + ".csv"
+	}
+	return path + ".json"
+}
+
+func mergeNew(existing, incoming []DownloadRecord) []DownloadRecord {
+	seen := make(map[string]struct{}, len(existing))
+	for _, r := range existing {
+		seen[dedupeKey(r)] = struct{}{}
+	}
+	for _, r := range incoming {
+		k := dedupeKey(r)
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		existing = append(existing, r)
+	}
+	return existing
+}
+
+func dropFlushed(pending, flushed []DownloadRecord) []DownloadRecord {
+	if len(pending) == 0 {
+		return nil
+	}
+	gone := make(map[string]int, len(flushed))
+	for _, r := range flushed {
+		gone[dedupeKey(r)]++
+	}
+	out := pending[:0]
+	for _, r := range pending {
+		k := dedupeKey(r)
+		if gone[k] > 0 {
+			gone[k]--
+			continue
+		}
+		out = append(out, r)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func dedupeKey(r DownloadRecord) string {
+	subs := strings.Join(r.Subtitles, "|")
+	return strings.Join([]string{
+		r.URL,
+		r.StartedAt.UTC().Format(time.RFC3339Nano),
+		r.Filename,
+		fmt.Sprintf("%t", r.Success),
+		r.Error,
+		subs,
+	}, "\x1f")
+}
+
+func attachMappings(recs []DownloadRecord, maps []subtitleMapping) []DownloadRecord {
+	if len(maps) == 0 {
+		return recs
+	}
+	for i := range recs {
+		if len(recs[i].Subtitles) > 0 {
+			continue
+		}
+		if i < len(maps) && sameIdentity(recs[i], maps[i]) {
+			recs[i].Subtitles = cloneSubs(maps[i].Subtitles)
+			continue
+		}
+		recs[i].Subtitles = cloneSubs(lookupMapping(recs[i], maps))
+	}
+	return recs
+}
+
+func fillSubtitles(recs []DownloadRecord, maps []subtitleMapping) int {
+	if len(maps) == 0 {
+		return 0
+	}
+	n := 0
+	for i := range recs {
+		if len(recs[i].Subtitles) > 0 {
+			continue
+		}
+		var subs []string
+		if i < len(maps) && sameIdentity(recs[i], maps[i]) {
+			subs = maps[i].Subtitles
+		} else {
+			subs = lookupMapping(recs[i], maps)
+		}
+		if len(subs) == 0 {
+			continue
+		}
+		recs[i].Subtitles = cloneSubs(subs)
+		n++
+	}
+	return n
+}
+
+func lookupMapping(r DownloadRecord, maps []subtitleMapping) []string {
+	for _, mp := range maps {
+		if mp.VideoID != "" && mp.VideoID == r.VideoID && (mp.VideoFile == "" || r.Filename == "" || mp.VideoFile == r.Filename) {
+			return mp.Subtitles
+		}
+	}
+	for _, mp := range maps {
+		if mp.VideoID == "" && mp.VideoFile != "" && mp.VideoFile == r.Filename {
+			return mp.Subtitles
+		}
 	}
 	return nil
 }
 
-func (m *Manager) writeRecords() error {
-	if m.format == "csv" {
-		return writeCSVRecords(m.recordPath, m.records)
+func sameIdentity(r DownloadRecord, mp subtitleMapping) bool {
+	if r.VideoID != "" || mp.VideoID != "" {
+		if r.VideoID != mp.VideoID {
+			return false
+		}
+		return mp.VideoFile == "" || r.Filename == "" || mp.VideoFile == r.Filename
 	}
-	return writeJSON(m.recordPath, m.records)
+	return mp.VideoFile == "" || r.Filename == "" || mp.VideoFile == r.Filename
 }
 
-func (m *Manager) writeMappings() error {
-	if m.format == "csv" {
-		return writeCSVMappings(m.mappingPath, m.mappings)
+func cloneSubs(in []string) []string {
+	if len(in) == 0 {
+		return []string{}
 	}
-	return writeJSON(m.mappingPath, m.mappings)
+	out := make([]string, len(in))
+	copy(out, in)
+	return out
 }
 
-// RecordPath returns the resolved record file path.
-func (m *Manager) RecordPath() string { return m.recordPath }
-
-// MappingPath returns the resolved mapping file path.
-func (m *Manager) MappingPath() string { return m.mappingPath }
-
-func (m *Manager) loadExisting() {
-	if m.format == "csv" {
-		m.records = readCSVRecords(m.recordPath)
-		m.mappings = readCSVMappings(m.mappingPath)
-		return
+func readCatalog(path, format string) ([]DownloadRecord, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
 	}
-	m.records = readJSONRecords(m.recordPath)
-	m.mappings = readJSONMappings(m.mappingPath)
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return nil, nil
+	}
+	if normalizeFormat(format) == "csv" || strings.EqualFold(filepath.Ext(path), ".csv") {
+		return parseCSVRecords(data)
+	}
+	return parseJSONRecords(data)
 }
 
-// ---- JSON helpers ----
+func parseJSONRecords(data []byte) ([]DownloadRecord, error) {
+	trim := strings.TrimSpace(string(data))
+	if strings.HasPrefix(trim, "[") {
+		var recs []DownloadRecord
+		if err := json.Unmarshal(data, &recs); err != nil {
+			return nil, err
+		}
+		return normalizeSubs(recs), nil
+	}
+	var cat Catalog
+	if err := json.Unmarshal(data, &cat); err != nil {
+		return nil, err
+	}
+	return normalizeSubs(cat.Records), nil
+}
 
-func writeJSON(path string, v any) error {
-	f, err := os.Create(path)
+func normalizeSubs(recs []DownloadRecord) []DownloadRecord {
+	for i := range recs {
+		if recs[i].Subtitles == nil {
+			recs[i].Subtitles = []string{}
+		}
+	}
+	return recs
+}
+
+func writeCatalog(path, format string, recs []DownloadRecord) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	var data []byte
+	var err error
+	if normalizeFormat(format) == "csv" {
+		data, err = encodeCSVRecords(recs)
+	} else {
+		cat := Catalog{Version: catalogVersion, Records: normalizeSubs(recs)}
+		if cat.Records == nil {
+			cat.Records = []DownloadRecord{}
+		}
+		data, err = json.MarshalIndent(cat, "", "  ")
+		if err == nil {
+			data = append(data, '\n')
+		}
+	}
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	enc := json.NewEncoder(f)
-	enc.SetIndent("", "  ")
-	return enc.Encode(v)
+	return writeAtomic(path, data)
 }
 
-// ---- CSV helpers ----
+func writeAtomic(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
+}
 
 var recordCSVHeader = []string{
-	"video_id", "title", "url", "output_dir", "filename",
+	"video_id", "title", "url", "output_dir", "filename", "subtitles",
 	"success", "error", "started_at", "finished_at", "duration",
 }
 
-func writeCSVRecords(path string, records []DownloadRecord) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
+func encodeCSVRecords(recs []DownloadRecord) ([]byte, error) {
+	var b strings.Builder
+	w := csv.NewWriter(&b)
+	if err := w.Write(recordCSVHeader); err != nil {
+		return nil, err
 	}
-	defer f.Close()
-	w := csv.NewWriter(f)
-	_ = w.Write(recordCSVHeader)
-	for _, r := range records {
+	for _, r := range recs {
 		row := []string{
 			r.VideoID, r.Title, r.URL, r.OutputDir, r.Filename,
+			strings.Join(r.Subtitles, "|"),
 			fmt.Sprintf("%t", r.Success),
 			r.Error,
 			r.StartedAt.Format(time.RFC3339),
 			r.FinishedAt.Format(time.RFC3339),
 			r.Duration,
 		}
-		_ = w.Write(row)
-	}
-	w.Flush()
-	return w.Error()
-}
-
-var mappingCSVHeader = []string{"video_id", "title", "video_file", "subtitles"}
-
-func writeCSVMappings(path string, mappings []SubtitleMapping) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	w := csv.NewWriter(f)
-	_ = w.Write(mappingCSVHeader)
-	for _, m := range mappings {
-		row := []string{
-			m.VideoID, m.Title, m.VideoFile,
-			strings.Join(m.Subtitles, "|"),
+		if err := w.Write(row); err != nil {
+			return nil, err
 		}
-		_ = w.Write(row)
 	}
 	w.Flush()
-	return w.Error()
+	return []byte(b.String()), w.Error()
 }
 
-func readJSONRecords(path string) []DownloadRecord {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	var records []DownloadRecord
-	if err := json.Unmarshal(data, &records); err != nil {
-		return nil
-	}
-	return records
-}
-
-func readJSONMappings(path string) []SubtitleMapping {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	var mappings []SubtitleMapping
-	if err := json.Unmarshal(data, &mappings); err != nil {
-		return nil
-	}
-	return mappings
-}
-
-func readCSVRecords(path string) []DownloadRecord {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-
-	rows, err := csv.NewReader(f).ReadAll()
+func parseCSVRecords(data []byte) ([]DownloadRecord, error) {
+	rows, err := csv.NewReader(strings.NewReader(string(data))).ReadAll()
 	if err != nil || len(rows) <= 1 {
-		return nil
+		return nil, err
 	}
-
-	records := make([]DownloadRecord, 0, len(rows)-1)
+	col := indexHeader(rows[0])
+	recs := make([]DownloadRecord, 0, len(rows)-1)
 	for _, row := range rows[1:] {
-		if len(row) < 10 {
-			continue
+		startedAt, _ := time.Parse(time.RFC3339, colValue(row, col, "started_at"))
+		finishedAt, _ := time.Parse(time.RFC3339, colValue(row, col, "finished_at"))
+		var subs []string
+		if raw := colValue(row, col, "subtitles"); raw != "" {
+			subs = strings.Split(raw, "|")
 		}
-		startedAt, _ := time.Parse(time.RFC3339, row[7])
-		finishedAt, _ := time.Parse(time.RFC3339, row[8])
-		records = append(records, DownloadRecord{
-			VideoID:    row[0],
-			Title:      row[1],
-			URL:        row[2],
-			OutputDir:  row[3],
-			Filename:   row[4],
-			Success:    row[5] == "true",
-			Error:      row[6],
+		if subs == nil {
+			subs = []string{}
+		}
+		recs = append(recs, DownloadRecord{
+			VideoID:    colValue(row, col, "video_id"),
+			Title:      colValue(row, col, "title"),
+			URL:        colValue(row, col, "url"),
+			OutputDir:  colValue(row, col, "output_dir"),
+			Filename:   colValue(row, col, "filename"),
+			Subtitles:  subs,
+			Success:    colValue(row, col, "success") == "true",
+			Error:      colValue(row, col, "error"),
 			StartedAt:  startedAt,
 			FinishedAt: finishedAt,
-			Duration:   row[9],
+			Duration:   colValue(row, col, "duration"),
 		})
 	}
-	return records
+	return recs, nil
 }
 
-func readCSVMappings(path string) []SubtitleMapping {
-	f, err := os.Open(path)
+func indexHeader(header []string) map[string]int {
+	col := make(map[string]int, len(header))
+	for i, name := range header {
+		col[strings.TrimSpace(name)] = i
+	}
+	// Legacy record CSV had no subtitles column. Positional fallback matches
+	// the old header so those files still import.
+	if _, ok := col["video_id"]; !ok && len(header) >= 10 {
+		legacy := []string{
+			"video_id", "title", "url", "output_dir", "filename",
+			"success", "error", "started_at", "finished_at", "duration",
+		}
+		for i, name := range legacy {
+			if i < len(header) {
+				col[name] = i
+			}
+		}
+	}
+	return col
+}
+
+func colValue(row []string, col map[string]int, name string) string {
+	i, ok := col[name]
+	if !ok || i < 0 || i >= len(row) {
+		return ""
+	}
+	return row[i]
+}
+
+func readMappings(path, format string) ([]subtitleMapping, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
 	}
-	defer f.Close()
+	if normalizeFormat(format) == "csv" || strings.EqualFold(filepath.Ext(path), ".csv") {
+		return parseCSVMappings(data)
+	}
+	var maps []subtitleMapping
+	if err := json.Unmarshal(data, &maps); err != nil {
+		return nil, err
+	}
+	return maps, nil
+}
 
-	rows, err := csv.NewReader(f).ReadAll()
+func parseCSVMappings(data []byte) ([]subtitleMapping, error) {
+	rows, err := csv.NewReader(strings.NewReader(string(data))).ReadAll()
 	if err != nil || len(rows) <= 1 {
-		return nil
+		return nil, err
 	}
-
-	mappings := make([]SubtitleMapping, 0, len(rows)-1)
+	col := indexHeader(rows[0])
+	if _, ok := col["video_file"]; !ok && len(rows[0]) >= 4 {
+		for i, name := range []string{"video_id", "title", "video_file", "subtitles"} {
+			col[name] = i
+		}
+	}
+	maps := make([]subtitleMapping, 0, len(rows)-1)
 	for _, row := range rows[1:] {
-		if len(row) < 4 {
-			continue
+		var subs []string
+		if raw := colValue(row, col, "subtitles"); raw != "" {
+			subs = strings.Split(raw, "|")
 		}
-		var subtitles []string
-		if row[3] != "" {
-			subtitles = strings.Split(row[3], "|")
-		}
-		mappings = append(mappings, SubtitleMapping{
-			VideoID:   row[0],
-			Title:     row[1],
-			VideoFile: row[2],
-			Subtitles: subtitles,
+		maps = append(maps, subtitleMapping{
+			VideoID:   colValue(row, col, "video_id"),
+			Title:     colValue(row, col, "title"),
+			VideoFile: colValue(row, col, "video_file"),
+			Subtitles: subs,
 		})
 	}
-	return mappings
+	return maps, nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func sameFile(a, b string) bool {
+	aa, errA := filepath.Abs(a)
+	bb, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return filepath.Clean(a) == filepath.Clean(b)
+	}
+	return aa == bb
+}
+
+func lockCatalog(path string) (func(), error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	lockPath := path + ".lock"
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		if err == nil {
+			_ = f.Close()
+			return func() { _ = os.Remove(lockPath) }, nil
+		}
+		if !os.IsExist(err) {
+			return nil, err
+		}
+		if info, statErr := os.Stat(lockPath); statErr == nil && time.Since(info.ModTime()) > 30*time.Second {
+			_ = os.Remove(lockPath)
+			continue
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("timed out waiting for record lock %s", lockPath)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }

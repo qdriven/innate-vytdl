@@ -34,7 +34,7 @@ go build -o vYtDL .
 | JS 运行时（YouTube） | `--js-runtimes node` |
 | 并发 | `-j 1`（串行） |
 | 进度 | TUI（`--no-tui` 为纯文本） |
-| 记录 | `download_record.json` + `subtitle_mapping.json` |
+| 记录 | `~/.vytdl/download_record.json`（字幕路径在每条记录里） |
 
 ---
 
@@ -54,7 +54,7 @@ go build -o vYtDL .
         │                    解析 --newline 进度
         │                    可选 playliststate 续传
         ▼
-  internal/record          追加 download_record + subtitle_mapping
+  internal/record          追加到 ~/.vytdl/download_record.json
   internal/tui (可选)       Bubble Tea 进度
 ```
 
@@ -171,8 +171,8 @@ yt-dlp -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]" \
   Video One.mp4
   Video One.en.vtt
   …
-./downloads/download_record.json
-./downloads/subtitle_mapping.json
+
+~/.vytdl/download_record.json    # 所有下载的历史，含字幕路径
 ```
 
 ### YouTube 反爬 / 403 / “n challenge”
@@ -222,15 +222,16 @@ YouTube 越来越多地要求 **JS 运行时**来解 `n` 参数挑战。vYtDL �
 
 ## Bilibili（哔哩哔哩）
 
+能下。`skills/vytdl-cli` 把地址交给本机 yt-dlp，没有单独的 B 站实现。地址全表（稿件、番剧、空间、收藏夹、课堂、直播、国际站）和 2026-11-07 的本机核对记录见 **[docs/bilibili.md](./docs/bilibili.md)**。`b23.tv` 短链没有专用 extractor，先打开得到 `bilibili.com` 地址再下载。
+
 ### URL 形态
 
 | 类型 | 示例 |
 |------|---------|
 | 单视频 / 多 P | `https://www.bilibili.com/video/BVxxxxxx` |
 | `av` 号 | `https://www.bilibili.com/video/av123456` |
-| 短链 | `https://b23.tv/xxxxx` |
 | 番剧 / 季 | `https://www.bilibili.com/bangumi/play/ss…` 或 `ep…` |
-| 收藏夹 / 合集 | 用 `--playlist` |
+| 收藏夹 / 合集 / 空间投稿 | 见 [docs/bilibili.md](./docs/bilibili.md)，用 `--playlist` |
 
 多 P（分 P）视频共用一个 BV 链接。用 `--playlist` 把所有分 P 下到一个标题子目录并支持续传。
 
@@ -318,6 +319,8 @@ yt-dlp -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]" \
 
 识别的域名：`x.com`、`twitter.com`（含子域）、`vxtwitter.com`、`fxtwitter.com`、`nitter.net`。用户显式传入任何 `twitter:api=` 时自动回退失效（用户优先）。
 
+只认带 `/status/<id>` 的单条推文。`https://x.com/<handle>` 和 `/media` 列不出该账号的发帖，也不能按「近 3 个月」筛选：当前 yt-dlp 没有用户时间线 extractor，syndication 按一条推文取视频，CLI 没有日期参数。多个 status 可以一次传入。一条推文里的多段视频给这条链接加 `--playlist`。调用约定见 `skills/x-video-dl/SKILL.md`。
+
 ---
 
 ## 多站点
@@ -383,19 +386,29 @@ EMBED=1 ONLY=windows ./scripts/build.sh
   "URL1" "URL2" "URL3"
 ```
 
-信号量 worker pool（`cmd/download.go`）。记录文件有互斥保护。
+信号量 worker pool（`cmd/download.go`）。下载记录写入同一个目录文件，并用锁避免并发写坏。
 
 ---
 
 ## 输出文件
 
+下载历史只有一个目录，CLI 和 `serve` 都往里追加。字幕路径是每条记录的 `subtitles` 字段。
+
 | 文件 | 用途 |
 |------|---------|
-| `download_record.json` / `.csv` | 成功/失败、URL、路径、错误、耗时 |
-| `subtitle_mapping.json` / `.csv` | 视频 ↔ 字幕路径 |
-| `<playlist>/.playlist_state.json` | 续传队列 |
+| `~/.vytdl/download_record.json`（或 `.csv`） | 成功/失败、URL、视频路径、字幕路径、错误、耗时 |
+| `$VYTDL_HOME/vytdl.db` | 仅 `serve` 的队列与进度，不是下载历史 |
+| `<playlist>/.playlist_state.json` | 播放列表续传队列 |
 
-用 `--record-file`、`--mapping-file`、`--log-format csv` 改名 / 换格式。
+```bash
+./vYtDL records                 # 查看历史
+./vYtDL records --json          # 机器可读，含字幕路径
+./vYtDL records --failed
+```
+
+默认目录是 `~/.vytdl`（与 `serve --home` 相同，可用 `VYTDL_HOME` 覆盖）。`--record-file` 改路径；只写文件名时仍放在该目录下。`--log-format csv` 换成单个 CSV，字幕列用 `|` 分隔。
+
+当前目录里如果还有旧的 `download_record.*` 和 `subtitle_mapping.*`，`download` 或 `records` 会把它们并进这份目录，然后删除旧文件。
 
 ---
 
@@ -431,13 +444,14 @@ EMBED=1 ONLY=windows ./scripts/build.sh
 | `--port` | `0`（`PORT` 环境变量） | 监听端口；`0` = 随机空闲端口 |
 | `--host` | `127.0.0.1`（`VYTDL_HOST`） | 绑定地址；Docker 用 `0.0.0.0` |
 | `--static` | `VYTDL_STATIC_DIR` | 从该目录托管前端导出（含 SPA 回退） |
-| `--home` | `~/.vytdl`（`VYTDL_HOME`） | 数据根目录 — `vytdl.db` 与日志在此 |
+| `--home` | `~/.vytdl`（`VYTDL_HOME`） | 数据根目录 — `vytdl.db`（队列）与 `download_record.json`（历史）在此 |
 | `--dev` | 关 | 请求日志 |
 
 说明：
 
 - 默认下载目录为 `<home>/downloads`（可用 `VYTDL_OUTPUT_DIR` 覆盖）。
-- API 与 Web 后端一一对应（`POST /api/start-download`、`GET /api/downloads`、`WS /api/ws` 等）—— 现有 Web 前端无需改动。
+- 每次下载结束（成功、失败或取消）都会追加到 `<home>/download_record.json`，与 CLI 的 `vYtDL records` 是同一份历史。
+- API 与 Web 后端一一对应（`POST /api/start-download`、`GET /api/downloads`、`WS /api/ws` 等）—— 现有 Web 前端无需改动。`GET /api/downloads` 读的是队列库 `vytdl.db`，不是这份历史文件。
 - daemon 启动时会恢复上次停止时处于 `pending` / `downloading` 状态的下载（序列化选项存在 `options` 列）。`GET /api/health` 供桌面壳做就绪探测。
 
 ---

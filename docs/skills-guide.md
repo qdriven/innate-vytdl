@@ -27,10 +27,11 @@ description: 构建、运行和扩展 vYtDL CLI……
 
 | Skill | 作用 | 典型触发语 |
 |-------|------|-----------|
-| [`skills/vytdl-cli`](../skills/vytdl-cli/) | vYtDL CLI 的构建、使用、排障、扩展 | 「下载这个 YouTube/B站 视频」「播放列表断了续传」「vYtDL 报 403」 |
+| [`skills/vytdl-cli`](../skills/vytdl-cli/) | vYtDL CLI 的构建、使用、排障、扩展。B 站可下范围见 [docs/bilibili.md](./bilibili.md) | 「下载这个 YouTube/B站 视频」「播放列表断了续传」「vYtDL 报 403」 |
+| [`skills/download-record`](../skills/download-record/) | 查询统一下载记录（历史、字幕路径、失败原因） | 「这个视频下过没有」「字幕文件在哪」「看看下载失败原因」 |
 | [`skills/x-video-dl`](../skills/x-video-dl/) | X/Twitter 推文视频下载（yt-dlp + 浏览器 cookie 直调脚本） | 「把这个推文视频存下来」+ x.com 链接 |
 
-两个 skill 覆盖 X/Twitter 场景时二选一即可：`x-video-dl` 更轻（无需构建 Go），`vytdl-cli` 更全（下载记录、播放列表、全站点）。
+X/Twitter 下载二选一即可：`x-video-dl` 更轻（无需构建 Go），`vytdl-cli` 更全（统一下载记录、播放列表、全站点）。B 站只用 `vytdl-cli`，能下的地址写在 [docs/bilibili.md](./bilibili.md)。核对下载结果时用 `download-record`，不要再找 `subtitle_mapping.json`。
 
 ---
 
@@ -39,14 +40,16 @@ description: 构建、运行和扩展 vYtDL CLI……
 规范源是本仓库 `skills/` 目录。两种安装方式：
 
 ```bash
-REPO=/Users/patrick/innate/innate-works/projects/innate-vytdl
+REPO=/Users/patrick/innate/innate-apps/innate-vytdl
 
 # 方式 A：符号链接（推荐）— 更新规范源后自动生效
 ln -sfn $REPO/skills/vytdl-cli  ~/.zcode/skills/vytdl-cli
+ln -sfn $REPO/skills/download-record ~/.zcode/skills/download-record
 ln -sfn $REPO/skills/x-video-dl ~/.zcode/skills/x-video-dl
 
 # 方式 B：复制 — 适合不支持 symlink 或要打包上云的工具
 cp -R $REPO/skills/vytdl-cli ~/.workbuddy/skills/
+cp -R $REPO/skills/download-record ~/.workbuddy/skills/
 ```
 
 更新 skill 后：链接安装自动生效；复制安装需重新 `cp -R`。
@@ -58,9 +61,10 @@ cp -R $REPO/skills/vytdl-cli ~/.workbuddy/skills/
 **安装路径**：`~/.workbuddy/skills/<skill-name>/`（复制安装，WorkBuddy 启动时扫描该目录）；也可以在 WorkBuddy 界面「专家·技能·连接器 → 上传技能」导入 skill 目录的 zip 包，或从技能市场安装。
 
 ```bash
-REPO=/Users/patrick/innate/innate-works/projects/innate-vytdl
+REPO=/Users/patrick/innate/innate-apps/innate-vytdl
 mkdir -p ~/.workbuddy/skills
 cp -R $REPO/skills/vytdl-cli ~/.workbuddy/skills/
+cp -R $REPO/skills/download-record ~/.workbuddy/skills/
 cp -R $REPO/skills/x-video-dl ~/.workbuddy/skills/
 ```
 
@@ -83,8 +87,9 @@ cp -R $REPO/skills/x-video-dl ~/.workbuddy/skills/
 **安装路径**：`~/.zcode/skills/<skill-name>/`，符号链接或复制均可。
 
 ```bash
-REPO=/Users/patrick/innate/innate-works/projects/innate-vytdl
+REPO=/Users/patrick/innate/innate-apps/innate-vytdl
 ln -sfn $REPO/skills/vytdl-cli  ~/.zcode/skills/vytdl-cli
+ln -sfn $REPO/skills/download-record ~/.zcode/skills/download-record
 ln -sfn $REPO/skills/x-video-dl ~/.zcode/skills/x-video-dl
 ```
 
@@ -100,8 +105,9 @@ ln -sfn $REPO/skills/x-video-dl ~/.zcode/skills/x-video-dl
 **安装路径**：`~/.kimi-code/skills/<skill-name>/`（符号链接或复制）。
 
 ```bash
-REPO=/Users/patrick/innate/innate-works/projects/innate-vytdl
+REPO=/Users/patrick/innate/innate-apps/innate-vytdl
 ln -sfn $REPO/skills/vytdl-cli  ~/.kimi-code/skills/vytdl-cli
+ln -sfn $REPO/skills/download-record ~/.kimi-code/skills/download-record
 ln -sfn $REPO/skills/x-video-dl ~/.kimi-code/skills/x-video-dl
 ```
 
@@ -128,7 +134,7 @@ x_dl.sh <链接>   或   vYtDL download --no-tui -o ./downloads <链接>
 yt-dlp 子进程（cookie 鉴权 / syndication API）
         │
         ▼
-Agent 用 ffprobe / download_record.json 验证并汇报结果
+Agent 用 `vYtDL records --json`（或 ffprobe）核对 `filename` / `subtitles` 并汇报结果
 ```
 
 skill 决定「怎么做」（流程、参数、排障），CLI 决定「做什么」（实际下载）。没有 skill 时你也可以直接跑 CLI —— 全部用法见 [`USAGE.md`](../USAGE.md)。

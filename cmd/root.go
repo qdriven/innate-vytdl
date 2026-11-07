@@ -23,8 +23,7 @@ Features:
   • Time-range clipping
   • Subtitle download (EN + ZH by default)
   • Cookie / proxy / extractor-args for restricted sites
-  • Download log (JSON or CSV) tracking success / failure
-  • Subtitle-video mapping file (JSON or CSV)
+  • One download log (JSON or CSV) with subtitle paths included
   • Interactive TUI with live progress bars
 `,
 }

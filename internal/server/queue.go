@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/innate/yt-dl/internal/downloader"
+	"github.com/innate/yt-dl/internal/record"
 )
 
 // StartDownloadRequest mirrors the frontend DownloadOptions payload
@@ -155,6 +156,8 @@ type QueueManager struct {
 	hub *Hub
 	// defaultOutputDir backs resumed records that have no stored output dir.
 	defaultOutputDir string
+	// catalogPath is the shared download history (download_record.json).
+	catalogPath string
 
 	mu            sync.Mutex
 	maxConcurrent int
@@ -166,11 +169,12 @@ type QueueManager struct {
 
 // NewQueueManager creates the queue; call LoadSettings and ResumeOnStartup
 // before serving traffic.
-func NewQueueManager(db *Database, hub *Hub, defaultOutputDir string) *QueueManager {
+func NewQueueManager(db *Database, hub *Hub, defaultOutputDir, catalogPath string) *QueueManager {
 	return &QueueManager{
 		db:               db,
 		hub:              hub,
 		defaultOutputDir: defaultOutputDir,
+		catalogPath:      catalogPath,
 		maxConcurrent:    3,
 		active:           make(map[string]*activeDownload),
 	}
@@ -397,6 +401,7 @@ func (q *QueueManager) finish(id string, results []downloader.DownloadResult) {
 		q.hub.Broadcast("download:status:"+id, "failed")
 		return
 	}
+	q.appendCatalog(results)
 
 	cancelled, failed := false, false
 	firstError := ""
@@ -456,6 +461,22 @@ func (q *QueueManager) finish(id string, results []downloader.DownloadResult) {
 		})
 		q.hub.Broadcast("download:status:"+id, "completed")
 	}
+}
+
+// appendCatalog writes each finished attempt into the shared history file.
+// SQLite remains the live queue; this file is the durable log.
+func (q *QueueManager) appendCatalog(results []downloader.DownloadResult) {
+	if q.catalogPath == "" || len(results) == 0 {
+		return
+	}
+	mgr, err := record.NewManager("json", q.catalogPath)
+	if err != nil {
+		return
+	}
+	for _, r := range results {
+		mgr.Add(r)
+	}
+	_ = mgr.Flush()
 }
 
 func nullableString(s string) any {

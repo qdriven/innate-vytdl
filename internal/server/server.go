@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+
+	"github.com/innate/yt-dl/internal/record"
 )
 
 // Version is the daemon version reported by /api/health.
@@ -74,7 +76,7 @@ func New(cfg Config) (*Server, error) {
 		hub:              hub,
 		defaultOutputDir: cfg.OutputDir,
 	}
-	s.queue = NewQueueManager(db, hub, cfg.OutputDir)
+	s.queue = NewQueueManager(db, hub, cfg.OutputDir, filepath.Join(cfg.HomeDir, record.CatalogName("json")))
 
 	if err := s.seedDefaults(); err != nil {
 		db.Close()

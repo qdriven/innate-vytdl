@@ -32,15 +32,6 @@ type Options struct {
 	// Each playlist gets its own sub-directory named after the playlist title.
 	IsPlaylist bool
 
-	// RecordFile is the path to the download-log file (.json or .csv).
-	RecordFile string
-
-	// MappingFile is the path to the subtitle-video mapping file (.json or .csv).
-	MappingFile string
-
-	// LogFormat selects "json" or "csv" for the record / mapping files.
-	LogFormat string
-
 	// YTDLPBin optionally overrides the downloader binary path.
 	YTDLPBin string
 
@@ -141,9 +132,6 @@ func DefaultOptions() Options {
 		SubtitleLangs:  []string{"en", "zh"},
 		WriteSubtitles: true,
 		WriteAutoSubs:  true,
-		LogFormat:      "json",
-		RecordFile:     "download_record",
-		MappingFile:    "subtitle_mapping",
 		Retries:        "10",
 		SocketTimeout:  "30",
 	}

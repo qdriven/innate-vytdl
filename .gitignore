@@ -22,6 +22,7 @@
 *.part
 *.ytdl
 *.temp
+# 忽略误落在仓库里的旧日志；正式历史在 ~/.vytdl/download_record.json
 download_record.json
 download_record.csv
 subtitle_mapping.json

@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"sync"
 	"strings"
+	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -16,24 +16,23 @@ import (
 )
 
 var (
-	flagFormat      string
-	flagQuality     string
-	flagStartTime   string
-	flagEndTime     string
-	flagOutputDir   string
-	flagSubLangs    string
-	flagNoSubs      bool
-	flagNoAutoSubs  bool
-	flagPlaylist    bool
-	flagLogFormat   string
-	flagRecordFile  string
-	flagMappingFile string
-	flagNoTUI       bool
-	flagYTDLPBin    string
-	flagProxy       string
-	flagCookiesFile string
-	flagCookiesFrom string
-	flagUserAgent   string
+	flagFormat       string
+	flagQuality      string
+	flagStartTime    string
+	flagEndTime      string
+	flagOutputDir    string
+	flagSubLangs     string
+	flagNoSubs       bool
+	flagNoAutoSubs   bool
+	flagPlaylist     bool
+	flagLogFormat    string
+	flagRecordFile   string
+	flagNoTUI        bool
+	flagYTDLPBin     string
+	flagProxy        string
+	flagCookiesFile  string
+	flagCookiesFrom  string
+	flagUserAgent    string
 	flagExtractor    string
 	flagJSRuntimes   string
 	flagRetries      string
@@ -67,11 +66,9 @@ func init() {
 	dl.Flags().BoolVarP(&flagPlaylist, "playlist", "p", false,
 		"Treat URL as a playlist / collection")
 	dl.Flags().StringVar(&flagLogFormat, "log-format", "json",
-		"Record / mapping file format: json or csv")
-	dl.Flags().StringVar(&flagRecordFile, "record-file", "download_record",
-		"Base name (no extension) for the download log file")
-	dl.Flags().StringVar(&flagMappingFile, "mapping-file", "subtitle_mapping",
-		"Base name (no extension) for the subtitle-video mapping file")
+		"Download log format: json or csv")
+	dl.Flags().StringVar(&flagRecordFile, "record-file", "",
+		"Download log path (default: $VYTDL_HOME/download_record.json, usually ~/.vytdl/download_record.json)")
 	dl.Flags().BoolVar(&flagNoTUI, "no-tui", false,
 		"Disable TUI; print plain progress to stdout")
 	dl.Flags().StringVar(&flagYTDLPBin, "yt-dlp-bin", cfg.YTDLPBin,
@@ -131,6 +128,10 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	if logFormat != "json" && logFormat != "csv" {
 		return fmt.Errorf("unsupported log format %q: use json or csv", flagLogFormat)
 	}
+	mgr, err := record.NewManager(logFormat, record.ResolvePath(logFormat, flagRecordFile))
+	if err != nil {
+		return err
+	}
 	resolved, err := validateYTDLPAvailability(flagYTDLPBin)
 	if err != nil {
 		return err
@@ -168,9 +169,6 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		WriteSubtitles:     !flagNoSubs,
 		WriteAutoSubs:      !flagNoAutoSubs,
 		IsPlaylist:         flagPlaylist,
-		LogFormat:          logFormat,
-		RecordFile:         flagRecordFile,
-		MappingFile:        flagMappingFile,
 		YTDLPBin:           flagYTDLPBin,
 		Proxy:              flagProxy,
 		CookiesFile:        flagCookiesFile,
@@ -183,8 +181,6 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		ForceIPv4:          flagForceIPv4,
 		ResetPlaylistState: flagResetState,
 	}
-
-	mgr := record.NewManager(logFormat, flagRecordFile, flagMappingFile, outDir)
 
 	// Create progress channel
 	progressCh := make(chan downloader.ProgressUpdate, 100)
@@ -246,10 +242,10 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	close(queue)
 
 	var (
-		allResults   []downloader.DownloadResult
-		resultsMu    sync.Mutex
-		wg           sync.WaitGroup
-		sem          = make(chan struct{}, concurrency)
+		allResults []downloader.DownloadResult
+		resultsMu  sync.Mutex
+		wg         sync.WaitGroup
+		sem        = make(chan struct{}, concurrency)
 	)
 
 	// If concurrency == 1, just do sequential (avoids goroutine overhead)
@@ -297,6 +293,17 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
 	}
 
+	cwd, cwdErr := os.Getwd()
+	if cwdErr != nil {
+		cwd = ""
+	}
+	imported, impErr := importLegacyRecords(mgr, outDir, cwd)
+	if impErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to import legacy records: %v\n", impErr)
+	} else if imported > 0 {
+		fmt.Printf("Imported %d legacy record(s) into %s\n", imported, mgr.Path())
+	}
+
 	// Write records
 	for _, r := range allResults {
 		mgr.Add(r)
@@ -304,8 +311,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	if err := mgr.Flush(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to write records: %v\n", err)
 	} else {
-		fmt.Printf("\nDownload log   : %s\n", mgr.RecordPath())
-		fmt.Printf("Subtitle map   : %s\n", mgr.MappingPath())
+		fmt.Printf("\nDownload log: %s\n", mgr.Path())
 	}
 
 	if flagPlaylist && len(allResults) == 0 {
@@ -324,7 +330,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("\nCompleted: %d succeeded, %d failed.\n", ok, fail)
 	if fail > 0 {
-		return fmt.Errorf("%d download(s) failed — see %s for details", fail, mgr.RecordPath())
+		return fmt.Errorf("%d download(s) failed — see %s for details", fail, mgr.Path())
 	}
 	return nil
 }
