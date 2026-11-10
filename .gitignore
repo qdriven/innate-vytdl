@@ -7,7 +7,7 @@
 /dist/
 .bin/
 *.exe
-
+downloads/
 # Download / runtime artifacts
 *.mp4
 *.webm
@@ -44,3 +44,4 @@ config.local.json
 
 # Daemon dev data (task daemon:dev)
 /.daemon-home/
+.workbuddy/
