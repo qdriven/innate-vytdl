@@ -20,11 +20,11 @@ func init() {
 	an := analyzeCmd
 
 	an.Flags().StringVarP(&flagAnalyzeMode, "mode", "m", "text",
-		"Analysis mode: text")
+		"Analysis mode: text or markdown")
 	an.Flags().StringVarP(&flagAnalyzeOutput, "output", "o", "",
 		"Write output to file (default: stdout)")
 	an.Flags().StringVarP(&flagAnalyzeSegment, "segment", "s", "",
-		"Segment duration for modes that support it (e.g. 3m, 5m)")
+		"Reserved for future segmented output (currently unused)")
 
 	rootCmd.AddCommand(an)
 }
@@ -33,7 +33,7 @@ var analyzeCmd = &cobra.Command{
 	Use:     "analyze [flags] <file.vtt>",
 	Aliases: []string{"an", "ana"},
 	Short:   "Analyze a VTT subtitle file",
-	Long: `Analyze a WebVTT subtitle file and extract text, summaries, or key points.
+	Long: `Analyze a WebVTT subtitle file and extract text or Markdown.
 
 Modes:
   text        Extract plain text without timestamps (default)
