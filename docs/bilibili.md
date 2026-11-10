@@ -10,7 +10,7 @@
 | `download-record` | 下载完成后查 `~/.vytdl/download_record.json` |
 | `x-video-dl` | 只处理 X/Twitter |
 
-核对环境：本机 `yt-dlp` **2026.08.19**（`/Users/patrick/.local/bin/yt-dlp`）。对公开稿件做了元数据探测（不下完整文件）：
+核对环境：本机 `yt-dlp` **2026.08.19**。对公开稿件做了元数据探测（不下完整文件）：
 
 ```text
 yt-dlp --no-playlist --skip-download --print "%(extractor)s | %(id)s | %(title)s | %(ext)s" \

@@ -13,7 +13,7 @@ var rootCmd = &cobra.Command{
 	SilenceUsage: true,
 	Long: `yt-dl (vYtDL) is a command-line / TUI tool for downloading videos via yt-dlp.
 
-Supported sites follow yt-dlp (1800+ extractors): YouTube, Bilibili, TikTok,
+Supported sites follow yt-dlp's extractor list (1800+): YouTube, Bilibili, TikTok,
 X/Twitter, Instagram, Vimeo, Twitch, and many more. Pass any URL yt-dlp accepts.
 
 Features:
@@ -25,6 +25,8 @@ Features:
   • Cookie / proxy / extractor-args for restricted sites
   • One download log (JSON or CSV) with subtitle paths included
   • Interactive TUI with live progress bars
+  • Download records (records) and VTT transcript analysis (analyze)
+  • Background service for web/desktop frontends (serve)
 `,
 }
 

@@ -33,9 +33,9 @@ desktop shell (random loopback port) or reachable directly in the browser,
 or deployed to Docker with --host 0.0.0.0.
 
 Examples:
-  vytdl serve --port 0 --static ./out          # desktop-shell style launch
-  vytdl serve --port 3000 --host 0.0.0.0       # Docker deployment
-  vytdl serve --home ~/.vytdl --dev            # local dev with request logs`,
+  vYtDL serve --port 0 --static ./out          # desktop-shell style launch
+  vYtDL serve --port 3000 --host 0.0.0.0       # Docker deployment
+  vYtDL serve --home ~/.vytdl --dev            # local dev with request logs`,
 	RunE: runServe,
 }
 

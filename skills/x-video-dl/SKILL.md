@@ -19,7 +19,7 @@ x-video-dl/
 ## 前置条件
 
 - `yt-dlp`、`ffmpeg`：`brew install yt-dlp ffmpeg`
-- Chrome 已登录 x.com。X 的视频走 GraphQL 接口，**匿名拿不到**，必须借浏览器 cookie 鉴权
+- Chrome 已登录 x.com。本脚本默认用 `--cookies-from-browser` 走需要登录的 GraphQL 接口，以便同时覆盖受保护 / 敏感内容；vYtDL 对公开推文可自动改用 syndication API。
 - macOS 首次读取 Chrome cookie 可能弹钥匙串授权，选「始终允许」
 
 ## 用法
@@ -95,7 +95,7 @@ ffprobe -v quiet -show_entries format=duration,size \
 本 skill 与 vYtDL CLI（本仓库主程序）覆盖同一场景，二选一即可：
 
 - **本 skill**：直调 yt-dlp + 浏览器 cookie，文件名固定 `作者-推文ID.mp4`，适合快速单条下载
-- **vYtDL CLI**：`vYtDL download --no-tui -o ./downloads "<推文链接>"` — 公开推文无需 cookie（自动走 syndication API），带下载记录；私密/受限推文仍需 `--cookies-from-browser chrome --extractor-args "twitter:api=graphql"`
+- **vYtDL CLI**：`./vYtDL download --no-tui -o ./downloads "<推文链接>"` — 公开推文无需 cookie（自动走 syndication API），带下载记录；私密/受限推文仍需 `--cookies-from-browser chrome --extractor-args "twitter:api=graphql"`
 
-详见仓库根目录 `USAGE.md` 的 X/Twitter 一节。
+脚本路径相对仓库根目录：`skills/x-video-dl/scripts/x_dl.sh`。详见 [`USAGE.md`](../../USAGE.md#x--twitter)、[`docs/use-cases.md`](../../docs/use-cases.md#uc-4xtwitter-单条推文)、[`docs/spec.md`](../../docs/spec.md)。
 

@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """
-YouTube URL Batch Downloader
+URL Batch Downloader
 
-This script reads a text file containing YouTube URLs (one per line)
-and downloads them using vYtDL.
+This script reads a text file containing URLs (one per line) and downloads
+them one by one using vYtDL. Any site supported by yt-dlp works, not only
+YouTube.
 
 Usage:
     python batch_download.py <url_file.txt> [output_dir] [options]
 
 Examples:
-    python batch_download.py youtube_urls.txt ./downloads
-    python batch_download.py youtube_urls.txt ./downloads --quality 1080
-    python batch_download.py youtube_urls.txt ./downloads --playlist
+    python batch_download.py urls.txt ./downloads
+    python batch_download.py urls.txt ./downloads --quality 1080
+    python batch_download.py urls.txt ./downloads --playlist
 """
 
 import argparse
@@ -37,8 +38,6 @@ def find_vytdl() -> Optional[str]:
     """Find the vYtDL binary."""
     candidates = [
         './vYtDL',
-        '../vYtDL/vYtDL',
-        '../../vYtDL/vYtDL',
         'vYtDL',
     ]
     
@@ -80,7 +79,7 @@ def download_videos(
     if not vytdl_bin:
         print("Error: vYtDL binary not found.")
         print("Please ensure vYtDL is built and accessible.")
-        print("Build it with: cd vYtDL && go build -o vYtDL .")
+        print("Build it with: go build -o vYtDL .")
         return 0, len(urls)
     
     output_dir = os.path.abspath(output_dir)
@@ -130,7 +129,7 @@ def download_videos(
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Batch download YouTube videos using vYtDL',
+        description='Batch download URLs using vYtDL',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
@@ -139,14 +138,14 @@ Examples:
   %(prog)s urls.txt ./downloads --quality 720 --format webm
   %(prog)s playlist_urls.txt ./downloads --playlist
 
-The URL file should contain one YouTube URL per line.
+The URL file should contain one URL per line (any yt-dlp-supported site).
 Lines starting with # are treated as comments.
         '''
     )
     
     parser.add_argument(
         'url_file',
-        help='Path to text file containing YouTube URLs (one per line)'
+        help='Path to text file containing URLs (one per line)'
     )
     
     parser.add_argument(

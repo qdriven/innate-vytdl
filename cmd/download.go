@@ -96,7 +96,7 @@ func init() {
 	dl.Flags().IntVarP(&flagConcurrency, "concurrency", "j", 1,
 		"Maximum number of concurrent downloads (1 = sequential)")
 	dl.Flags().BoolVar(&flagInstallYTDLP, "install-yt-dlp", false,
-		"Download/update yt-dlp into the local cache (~/.cache/vYtDL) and exit")
+		"Download/update yt-dlp into the user cache dir and exit")
 
 	rootCmd.AddCommand(dl)
 }
