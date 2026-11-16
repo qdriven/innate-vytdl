@@ -4,7 +4,7 @@ Go CLI / TUI，封装 [yt-dlp](https://github.com/yt-dlp/yt-dlp)，支持 **1800
 
 vYtDL **不重新实现下载器**：它把 yt-dlp 作为子进程调度，简化日常参数（`-q 1080`、默认 EN/ZH 字幕、`-o` 目录），并补充播放列表断点续传、TUI 进度、统一下载记录，以及按需自动安装 yt-dlp。
 
-本项目是一个独立的 Go module（`github.com/innate/yt-dl`），不依赖其他仓库。产品定位与能力边界见 [`docs/spec.md`](./docs/spec.md)。
+本项目是一个独立的 Go module（`github.com/innate/yt-dl`），不依赖其他仓库。产品定位与能力边界见 [`docs/spec/`](./docs/spec/)。
 
 ## 快速开始
 
@@ -135,7 +135,7 @@ USAGE.md             # CLI 完整使用文档
 | 文档 | 内容 |
 |------|------|
 | [USAGE.md](./USAGE.md) | CLI 完整使用指南：命令面、参数映射、serve API、排障 |
-| [docs/spec.md](./docs/spec.md) | CLI 的用途与能力边界规范（做什么 / 不做什么 / 数据契约） |
+| [docs/spec/](./docs/spec/) | 规范集：定位与边界（`README.md`）、[CLI 契约](./docs/spec/cli.md)、数据契约（`data.md`）、serve 契约（`serve.md`） |
 | [docs/use-cases.md](./docs/use-cases.md) | 端到端用例：YouTube、B 站、X、多站点、serve、Agent Skill |
 | [docs/bilibili.md](./docs/bilibili.md) | 当前 yt-dlp 能下载的 B 站内容，以及登录 / 画质限制 |
 | [docs/skills-guide.md](./docs/skills-guide.md) | Skill 如何配合 CLI 在 WorkBuddy / zcode / Kimi 中使用 |

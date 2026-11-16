@@ -39,7 +39,7 @@ go build -o vYtDL .
 
 `--record-file` 的解析规则：空 = `$VYTDL_HOME/download_record.json`；只给文件名（不含 `/`）= 放在 `$VYTDL_HOME` 下；给绝对路径或含 `/` 的路径 = 按原路径使用；缺扩展名会自动补 `.json` / `.csv`。
 
-旧的 `download_record.json` + `subtitle_mapping.json`（或同名 `.csv`）如果还在当前目录，`records` 和 `download` 会并入上面的历史并删除这两份旧文件。
+旧的 `download_record.json` + `subtitle_mapping.json`（或同名 `.csv`）如果还在当前目录，`records` 会并入上面的历史并删除这两份旧文件；`download` 还会额外检查输出目录。
 
 ## 记录字段
 
@@ -68,4 +68,4 @@ CSV 表头与字段一一对应；`subtitles` 列用 `|` 分隔。
 3. 不要再创建或更新 `subtitle_mapping.json`。
 4. 换机器或指定目录时用 `VYTDL_HOME` 或 `--record-file`。
 
-字段契约见 [`docs/spec.md`](../../docs/spec.md#5-数据与状态契约)；场景示例见 [`docs/use-cases.md`](../../docs/use-cases.md#uc-7查询下载历史)。
+字段契约见 [`docs/spec/data.md`](../../docs/spec/data.md)；场景示例见 [`docs/use-cases.md`](../../docs/use-cases.md#uc-7查询下载历史)。

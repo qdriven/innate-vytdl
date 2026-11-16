@@ -145,7 +145,7 @@ Cookie / proxy / extractor-args / user-agent / retries 原样透传。
 1. 在 `cmd/download.go` `init()` 加 flag
 2. 在 `internal/downloader.Options` 加字段
 3. 接入 `downloader.go` 的 `buildArgs()`
-4. 用户可见的改动同步 `USAGE.md`、`docs/spec.md` 和本 skill。下载历史的字段或路径变了，同时改 `skills/download-record/SKILL.md`。
+4. 用户可见的改动同步 `USAGE.md`、`docs/spec/cli.md` 和本 skill。下载历史的字段或路径变了，同时改 `skills/download-record/SKILL.md` 与 `docs/spec/data.md`。
 
 测试：`go test ./...`
 
@@ -202,7 +202,7 @@ vYtDL 把 B 站 URL 交给本机 yt-dlp（无域名白名单）。2026-11-07 用
 
 ## 相关文档
 
-- `docs/spec.md` — CLI 用途与能力边界
+- `docs/spec/cli.md` — CLI 命令行契约（参数、默认值、输出与退出码）
 - `docs/use-cases.md` — YouTube / B 站 / X / serve / Skill 端到端用例
 - `docs/bilibili.md` — 当前 yt-dlp 能下载的 B 站内容
 - `USAGE.md` — 完整使用文档（参数、站点、serve API、排障）

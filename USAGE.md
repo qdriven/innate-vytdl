@@ -2,7 +2,7 @@
 
 Go CLI / TUI + 后台守护进程，封装 [yt-dlp](https://github.com/yt-dlp/yt-dlp)。vYtDL **不重新实现下载器** —— 它调度 yt-dlp 子进程，简化日常参数，并补充播放列表断点续传、TUI 进度和统一下载记录；`serve` 子命令再为 Web / 桌面前端提供 HTTP API + WebSocket + 队列。
 
-本文是完整用法。产品定位与边界见 [`docs/spec.md`](./docs/spec.md)，场景化示例见 [`docs/use-cases.md`](./docs/use-cases.md)。
+本文是完整用法。产品定位与边界见 [`docs/spec/`](./docs/spec/)（CLI 契约在 [`docs/spec/cli.md`](./docs/spec/cli.md)），场景化示例见 [`docs/use-cases.md`](./docs/use-cases.md)。
 
 ---
 
@@ -232,9 +232,9 @@ Cobra 根命令的 `Use` 是 `yt-dl`，所以 `--help` 里显示 `yt-dl`；构�
 
 - `download` 在整条命令结束后把结果追加到历史（`--record-file` / `--log-format` 决定文件）。
 - 默认 `~/.vytdl/download_record.json`；`--log-format csv` 时默认 `~/.vytdl/download_record.csv`。
-- 只给文件名（不含 `/`）时放在 `$VYTDL_HOME` 下；给绝对路径或含 `/` 的路径时按原路径使用；缺扩展名会自动补 `.json` / `.csv`。
+- 只给文件名（不含 `/`）时放在 `$VYTDL_HOME` 下；给绝对路径或含 `/` 的路径时按原路径使用；扩展名不是 `.json` / `.csv` 时会自动补。
 - 结束时会打印 `Download log: <path>` 和 `Completed: X succeeded, Y failed.`；有失败时进程退出码非 0。
-- 当前目录（以及 `download` 的输出目录）里的旧 `download_record.*` / `subtitle_mapping.*` 会被并入统一历史，然后删除旧文件。
+- 当前目录（以及 `download` 的输出目录）里的旧 `download_record.json|csv` + `subtitle_mapping.json|csv` 会被并入统一历史，然后删除旧文件。
 
 ### 参数 → yt-dlp 映射
 
@@ -455,7 +455,7 @@ YouTube 越来越多地要求 **JS 运行时**来解 `n` 参数挑战。vYtDL �
   "https://x.com/user/status/123"
 ```
 
-识别的域名：`x.com`、`twitter.com`（含子域）、`vxtwitter.com`、`fxtwitter.com`、`nitter.net`。用户显式传入任何 `twitter:api=` 时自动回退失效（用户优先）。
+识别的域名：`x.com`、`twitter.com` 及其子域、`vxtwitter.com`、`fxtwitter.com`、`nitter.net`（`www.` / `mobile.` 前缀忽略）。用户显式传入任何 `twitter:api=` 时自动回退失效（用户优先）。
 
 只认带 `/status/<id>` 的单条推文。`https://x.com/<handle>` 和 `/media` 列不出该账号的发帖，也不能按「近 3 个月」筛选：当前 yt-dlp 没有用户时间线 extractor，syndication 按一条推文取视频，CLI 没有日期参数。多个 status 可以一次传入。一条推文里的多段视频给这条链接加 `--playlist`。调用约定见 `skills/x-video-dl/SKILL.md`。
 
@@ -521,7 +521,7 @@ YouTube 越来越多地要求 **JS 运行时**来解 `n` 参数挑战。vYtDL �
 }
 ```
 
-字段定义见 [`docs/spec.md#5-数据与状态契约`](./docs/spec.md#5-数据与状态契约)。`records` 也会把当前目录里的旧 `download_record.*` / `subtitle_mapping.*` 并入统一历史后删除旧文件。
+字段定义见 [`docs/spec/data.md`](./docs/spec/data.md)。`records` 也会把当前目录里的旧 `download_record.json|csv` + `subtitle_mapping.json|csv` 并入统一历史后删除旧文件。
 
 ---
 
@@ -585,7 +585,7 @@ vYtDL daemon 1.0.0 listening on http://127.0.0.1:PORT
 
 - 启动时恢复上次停止时处于 `pending` / `downloading` 状态的下载（参数存在 `downloads.options` 列）。
 - 队列上限来自设置 `max_concurrent_downloads`（默认 3，范围 1–10），修改后立即生效。
-- 取消可作用于排队中或进行中的下载；删除会先取消再删记录。
+- 取消作用于排队中或进行中的下载；对已结束的记录（如已完成）调用也会把队列库里的状态改写为 `cancelled` 并广播事件。删除会先取消再删记录。
 - 重试会以单条重新入队（不复用原播放列表模式）。
 - 每完成一次下载（成功 / 失败 / 取消），结果追加到 `<home>/download_record.json`，与 CLI 的 `vYtDL records` 是同一份历史。
 - `GET /api/downloads` 读的是 SQLite 队列 `vytdl.db`，不是下载历史文件。
@@ -651,14 +651,16 @@ filename_template, po_token, extractor_args, config_location
 
 ```json
 {"event": "download:progress:<id>", "data": {...}}
-{"event": "download:status:<id>", "data": "pending|downloading|completed|failed|cancelled"}
-{"event": "download:complete:<id>", "data": {...}}
-{"event": "download:error:<id>", "data": {...}}
+{"event": "download:status:<id>", "data": "downloading|cancelled|completed|failed"}
+{"event": "download:complete:<id>", "data": {"success": true, "data": {...}}}
+{"event": "download:error:<id>", "data": {"success": false, "error": "..."}}
 {"event": "download:log:<id>", "data": {"level": "...", "message": "..."}}
 {"event": "queue:update", "data": {"id": "...", "status": "..."}}
 {"type": "vtt-report:status", "reportId": "...", "status": "pending|processing|failed"}
 {"type": "vtt-report:complete", "reportId": "..."}
 ```
+
+入队的 `pending` 只通过 `queue:update` 广播，`download:status` 不会出现 `pending` 值。
 
 ### 设置键
 
@@ -677,7 +679,8 @@ filename_template, po_token, extractor_args, config_location
 ### VTT 分析与音频提取
 
 - `POST /api/analyze-vtt` 会依次尝试字幕语言 `zh → en → ja → ko → zh-Hans → zh-Hant`，下载到 `<输出目录>/vtt-temp/<reportId>`，解析成 Markdown 后存进 `vtt_reports`，完成后清理临时目录。
-- `POST /api/extract-audio` 调 FFmpeg；`audio_format` 支持 `mp3`（默认）、`m4a`/`aac`、`flac`、`wav`、`ogg`、`opus`。FFmpeg 路径可用 `FFMPEG_PATH` 覆盖。
+- `POST /api/extract-audio` 调 FFmpeg；`audio_format` 支持 `mp3`（默认）、`m4a`/`aac`、`flac`、`wav`、`ogg`、`opus`，成功返回 `data.audio_path`。FFmpeg 路径可用 `FFMPEG_PATH` 覆盖。
+- `GET /api/vtt-reports` 分页：`limit` 默认 20、上限 100，`page` / `lang` 可选。
 - 打开 / 定位目录在 Docker 里会失败，返回 `success:false`（这是预期行为，前端会提示）。
 
 ---
@@ -700,7 +703,7 @@ filename_template, po_token, extractor_args, config_location
 
 默认目录是 `~/.vytdl`（与 `serve --home` 相同，可用 `VYTDL_HOME` 覆盖）。`--record-file` 改路径；只写文件名时仍放在该目录下。`--log-format csv` 换成单个 CSV，字幕列用 `|` 分隔。
 
-当前目录里如果还有旧的 `download_record.*` 和 `subtitle_mapping.*`，`download` 或 `records` 会把它们并进这份历史，然后删除旧文件。
+当前目录里如果还有旧的 `download_record.json|csv` 和 `subtitle_mapping.json|csv`，`download` 或 `records` 会把它们并进这份历史，然后删除旧文件。
 
 ---
 
@@ -758,7 +761,7 @@ python3 batch_download.py urls.txt ./downloads --log-format csv
 | 文档 | 内容 |
 |------|------|
 | [`README.md`](./README.md) | 项目入口、快速开始 |
-| [`docs/spec.md`](./docs/spec.md) | 用途与能力边界规范 |
+| [`docs/spec/`](./docs/spec/) | 规范集：定位与边界、[CLI 契约](./docs/spec/cli.md)、数据契约、serve 契约 |
 | [`docs/use-cases.md`](./docs/use-cases.md) | YouTube / B 站 / X / 多站点 / serve / Skill 用例 |
 | [`docs/bilibili.md`](./docs/bilibili.md) | B 站可下载范围与限制 |
 | [`docs/skills-guide.md`](./docs/skills-guide.md) | Skill 安装与各 Agent 工具用法 |

@@ -28,7 +28,7 @@ description: 构建、运行和扩展 vYtDL CLI……
 | Skill | 作用 | 典型触发语 | 对应文档 |
 |-------|------|-----------|----------|
 | [`skills/vytdl-cli`](../skills/vytdl-cli/) | vYtDL CLI 的构建、使用、排障、扩展；`download` / `records` / `analyze` / `serve` | 「下载这个 YouTube/B站 视频」「播放列表断了续传」「vYtDL 报 403」「起 vYtDL 服务」 | [`USAGE.md`](../USAGE.md)、[`docs/bilibili.md`](./bilibili.md) |
-| [`skills/download-record`](../skills/download-record/) | 查询统一下载记录（历史、字幕路径、失败原因） | 「这个视频下过没有」「字幕文件在哪」「看看下载失败原因」 | [`docs/spec.md`](./spec.md#5-数据与状态契约) |
+| [`skills/download-record`](../skills/download-record/) | 查询统一下载记录（历史、字幕路径、失败原因） | 「这个视频下过没有」「字幕文件在哪」「看看下载失败原因」 | [`docs/spec/data.md`](./spec/data.md) |
 | [`skills/x-video-dl`](../skills/x-video-dl/) | X/Twitter 单条推文视频下载（yt-dlp + 浏览器 cookie 直调脚本） | 「把这个推文视频存下来」+ x.com 链接 | [`USAGE.md#x--twitter`](../USAGE.md#x--twitter) |
 
 X/Twitter 下载二选一即可：`x-video-dl` 更轻（无需构建 Go），`vytdl-cli` 更全（统一下载记录、播放列表、全站点）。B 站只用 `vytdl-cli`，能下的地址写在 [`docs/bilibili.md`](./bilibili.md)。核对下载结果时用 `download-record`，不要再找 `subtitle_mapping.json`。
@@ -153,4 +153,4 @@ skill 决定「怎么做」（流程、参数、排障），CLI 决定「做什�
 | 钥匙串弹窗 | macOS 首次读浏览器 cookie 需允许；选「始终允许」 |
 | 代理 502 | 见 WorkBuddy 一节 |
 | 复制安装的 skill 行为旧 | 重新 `cp -R` 规范源 |
-| Agent 引用了不存在的文档 | 文档以仓库为准：`README.md`、`USAGE.md`、`docs/spec.md`、`docs/use-cases.md` |
+| Agent 引用了不存在的文档 | 文档以仓库为准：`README.md`、`USAGE.md`、`docs/spec/`、`docs/use-cases.md` |

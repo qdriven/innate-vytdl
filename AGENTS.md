@@ -18,7 +18,9 @@ go test ./...
 
 | 任务 | 先读 |
 |------|------|
-| 了解项目定位 / 边界 | `docs/spec.md` |
+| 了解项目定位 / 边界 | `docs/spec/README.md` |
+| CLI 参数 / 行为契约 | `docs/spec/cli.md` |
+| 数据 / 历史字段契约 | `docs/spec/data.md` |
 | 改 CLI 参数或行为 | `USAGE.md` 的 `download` 参数表 + `internal/downloader` |
 | 端到端演示 / 写示例 | `docs/use-cases.md` |
 | 改 `serve` API | `USAGE.md` 的 `serve` 一节 + `internal/server` |
@@ -63,7 +65,7 @@ docs/                      spec、use-cases、bilibili、skills-guide
 ## 改动的标准动作
 
 - **加用户可见 flag**：`cmd/*.go init()` 加 flag → `internal/downloader.Options` 加字段 → `buildArgs()` 接线（若需要）→ 更新 `USAGE.md` 参数表 → 更新 `skills/vytdl-cli/SKILL.md`。补测试（`go test ./...`）。
-- **改历史字段/路径**：`internal/record` → 同步 `docs/spec.md` 第 5 节、`skills/download-record/SKILL.md`、`USAGE.md`。
+- **改历史字段/路径**：`internal/record` → 同步 `docs/spec/data.md`、`skills/download-record/SKILL.md`、`USAGE.md`。
 - **改 serve API**：`internal/server/handlers.go`（路由）→ 同步 `USAGE.md` 端点表；保持响应 envelope 与前端字段名。
 - **改播放列表行为**：`internal/downloader.DownloadPlaylist` + `internal/playliststate`；注意「重跑同命令续传」和「成功但文件丢失要重排」。
 - **删旧文件**：先 `grep` 引用（README / USAGE / AGENTS / skills / scripts）；完全过时且不反映代码的文档可直接删除，并清理引用。
@@ -92,7 +94,7 @@ curl http://127.0.0.1:<port>/api/health
 ## 文档维护规则
 
 - 代码是唯一事实来源；文档只描述**当前实现**，不写未来计划（计划放 issue）。
-- 用户可见行为变化 → 必须同步 `README.md`（入口/默认值）、`USAGE.md`（完整用法）、`docs/spec.md`（契约）中的相关部分。
+- 用户可见行为变化 → 必须同步 `README.md`（入口/默认值）、`USAGE.md`（完整用法）、`docs/spec/`（契约：`cli.md` / `data.md` / `serve.md`）中的相关部分。
 - 面向 Agent 的调用约定放 `skills/*/SKILL.md`，不要复制整份 USAGE。
 - 安装路径示例一律用占位符（如 `$REPO` / `$(git rev-parse --show-toplevel)`），不要写某台机器的本地路径。
 - 已删文档的引用必须一起清掉，避免死链。

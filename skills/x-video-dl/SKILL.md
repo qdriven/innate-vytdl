@@ -97,5 +97,5 @@ ffprobe -v quiet -show_entries format=duration,size \
 - **本 skill**：直调 yt-dlp + 浏览器 cookie，文件名固定 `作者-推文ID.mp4`，适合快速单条下载
 - **vYtDL CLI**：`./vYtDL download --no-tui -o ./downloads "<推文链接>"` — 公开推文无需 cookie（自动走 syndication API），带下载记录；私密/受限推文仍需 `--cookies-from-browser chrome --extractor-args "twitter:api=graphql"`
 
-脚本路径相对仓库根目录：`skills/x-video-dl/scripts/x_dl.sh`。详见 [`USAGE.md`](../../USAGE.md#x--twitter)、[`docs/use-cases.md`](../../docs/use-cases.md#uc-4xtwitter-单条推文)、[`docs/spec.md`](../../docs/spec.md)。
+脚本路径相对仓库根目录：`skills/x-video-dl/scripts/x_dl.sh`。详见 [`USAGE.md`](../../USAGE.md#x--twitter)、[`docs/use-cases.md`](../../docs/use-cases.md#uc-4xtwitter-单条推文)、[`docs/spec/cli.md`](../../docs/spec/cli.md)。
 

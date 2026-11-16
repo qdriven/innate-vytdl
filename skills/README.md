@@ -31,7 +31,7 @@ ln -sfn "$REPO/skills/vytdl-cli"      ~/.kimi-code/skills/vytdl-cli
 ## 相关文档
 
 - [`USAGE.md`](../USAGE.md) — CLI 完整用法（参数、站点、serve API）
-- [`docs/spec.md`](../docs/spec.md) — 用途与能力边界
+- [`docs/spec/`](../docs/spec/) — 规范集：定位与边界、CLI 契约、数据契约、serve 契约
 - [`docs/use-cases.md`](../docs/use-cases.md) — 端到端用例（含 Agent Skill 调用）
 - [`docs/bilibili.md`](../docs/bilibili.md) — B 站可下载范围
 
