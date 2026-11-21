@@ -299,7 +299,7 @@ Agent 侧封装：`skills/download-record/SKILL.md`。
 ```text
 <home>/vytdl.db                 # downloads / settings / vtt_reports
 <home>/download_record.json     # 与 CLI 共用的下载历史
-<home>/downloads/               # 默认下载目录（VYTDL_OUTPUT_DIR / 设置可改）
+<home>/downloads/               # 默认下载目录（VYTDL_OUTPUT_DIR → config.json output_dir → 默认；设置可改）
 ```
 
 **验证**：

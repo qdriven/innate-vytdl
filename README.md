@@ -58,6 +58,7 @@ export VYTDL_YTDLP_MIRROR="https://ghproxy.net/https://github.com/yt-dlp/yt-dlp/
 | JS 运行时（YouTube） | `--js-runtimes node` |
 | 并发 | `-j 1`（串行） |
 | 进度 | TUI；`--no-tui` 为纯文本，无 TTY 时自动回退 |
+| 输出目录 | `.`（当前目录）；`config.json` 的 `output_dir` 可设默认，如挂载的私有云盘路径 |
 | 下载历史 | `~/.vytdl/download_record.json`（每条的 `subtitles` 字段） |
 
 ## 构建
@@ -87,7 +88,7 @@ Go 1.26+。FFmpeg 可选：片段裁剪、合并、`serve` 的音频提取需要
 4. 用户缓存目录下的 `vYtDL`（macOS `~/Library/Caches/vYtDL`，Linux `~/.cache/vYtDL`，Windows `%LocalAppData%\vYtDL`）
 5. 从 GitHub Releases 自动下载
 
-`config.json` 只支持 `yt_dlp_bin`；`VYTDL_CONFIG` 可指定配置文件路径。
+`config.json` 支持 `yt_dlp_bin` 与 `output_dir`（默认输出目录，支持 `~/` 前缀，可指向挂载的私有云盘如懒猫私有云）；`VYTDL_CONFIG` 可指定配置文件路径。
 
 ## 下载记录
 

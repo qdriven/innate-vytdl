@@ -55,8 +55,8 @@ func init() {
 		"Clip start time (HH:MM:SS or seconds)")
 	dl.Flags().StringVar(&flagEndTime, "end", "",
 		"Clip end time (HH:MM:SS or seconds)")
-	dl.Flags().StringVarP(&flagOutputDir, "output", "o", ".",
-		"Output directory (default: current directory)")
+	dl.Flags().StringVarP(&flagOutputDir, "output", "o", defaultOutputDir(cfg),
+		"Output directory (default: config.json output_dir, else current directory)")
 	dl.Flags().StringVar(&flagSubLangs, "sub-langs", "en,zh",
 		"Comma-separated subtitle languages to download")
 	dl.Flags().BoolVar(&flagNoSubs, "no-subs", false,
@@ -99,6 +99,15 @@ func init() {
 		"Download/update yt-dlp into the user cache dir and exit")
 
 	rootCmd.AddCommand(dl)
+}
+
+// defaultOutputDir returns the --output default: config.json output_dir when
+// set (e.g. a mounted private-cloud volume), else the current directory.
+func defaultOutputDir(cfg config.Config) string {
+	if cfg.OutputDir != "" {
+		return cfg.OutputDir
+	}
+	return "."
 }
 
 var downloadCmd = &cobra.Command{

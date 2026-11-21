@@ -9,13 +9,15 @@ import (
 
 // Config holds runtime defaults loaded from config.json.
 type Config struct {
-	YTDLPBin string `json:"yt_dlp_bin"`
+	YTDLPBin  string `json:"yt_dlp_bin"`
+	OutputDir string `json:"output_dir"`
 }
 
 // Default returns the built-in defaults.
 func Default() Config {
 	return Config{
-		YTDLPBin: "", // empty → PATH, then embedded/auto-download
+		YTDLPBin:  "", // empty → PATH, then embedded/auto-download
+		OutputDir: "", // empty → current directory (CLI) / <home>/downloads (serve)
 	}
 }
 
@@ -40,7 +42,26 @@ func Load() Config {
 	if v := strings.TrimSpace(fileCfg.YTDLPBin); v != "" {
 		cfg.YTDLPBin = v
 	}
+	if v := strings.TrimSpace(fileCfg.OutputDir); v != "" {
+		cfg.OutputDir = expandHome(v)
+	}
 	return cfg
+}
+
+// expandHome resolves a leading "~" or "~/" to the user home directory so
+// config paths like "~/Downloads" work without shell expansion.
+func expandHome(path string) string {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	if path == "~" {
+		return home
+	}
+	return filepath.Join(home, strings.TrimPrefix(path, "~/"))
 }
 
 func configPath() string {
