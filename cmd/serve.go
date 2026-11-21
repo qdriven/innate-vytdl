@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/innate/yt-dl/internal/config"
 	"github.com/innate/yt-dl/internal/server"
 )
 
@@ -97,7 +98,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 		homeDir = abs
 	}
 
-	outputDir := envStr("VYTDL_OUTPUT_DIR", filepath.Join(homeDir, "downloads"))
+	// Output dir chain: VYTDL_OUTPUT_DIR env → config.json output_dir →
+	// <home>/downloads. Frontend setting default_output_dir still applies per
+	// queued request (internal/server).
+	defaultOutput := config.Load().OutputDir
+	if defaultOutput == "" {
+		defaultOutput = filepath.Join(homeDir, "downloads")
+	}
+	outputDir := envStr("VYTDL_OUTPUT_DIR", defaultOutput)
 
 	srv, err := server.New(server.Config{
 		Host:      serveFlags.host,

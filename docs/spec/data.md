@@ -13,7 +13,7 @@
 | `$VYTDL_HOME/vytdl.db` | 仅 `serve` | SQLite：`downloads`（实时队列）、`settings`、`vtt_reports` | 不要用它回答「历史上下过什么」 |
 | `<输出目录>/<播放列表标题>/.playlist_state.json` | CLI | 播放列表逐条续传状态，见第 4 节 | 不要当下载历史 |
 | `<输出目录>/<播放列表标题>/` | CLI | 该播放列表的成片与字幕 | — |
-| `<home>/downloads/` | `serve` | serve 模式默认下载目录（`VYTDL_OUTPUT_DIR` / 设置可改） | — |
+| `<home>/downloads/` | `serve` | serve 模式默认下载目录（`VYTDL_OUTPUT_DIR` → `config.json` `output_dir` → 默认；设置可改） | — |
 
 `$VYTDL_HOME` 未设置时取 `~/.vytdl`；home 目录都取不到时回退相对路径 `.vytdl`。
 

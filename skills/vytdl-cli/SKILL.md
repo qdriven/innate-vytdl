@@ -116,6 +116,7 @@ main.go -> cmd.Execute()
 | 项 | 默认 |
 |----|------|
 | 容器 | `-f mp4`（传给 `--merge-output-format`，不转码） |
+| 输出目录 | `.`；`config.json` 的 `output_dir` 可设默认（如挂载的私有云盘路径），显式 `-o` 优先 |
 | 画质 | 空 = 最高；`-q 720/1080/2160` 是高度上限；其他字符串按 yt-dlp `-f` 原样 |
 | 字幕 | `--write-subs --write-auto-subs --sub-langs en,zh` |
 | JS 运行时 | `--js-runtimes node` |
@@ -183,7 +184,7 @@ vYtDL 把 B 站 URL 交给本机 yt-dlp（无域名白名单）。2026-11-07 用
 
 - 默认 `127.0.0.1`、随机端口（`--port 0`）；Docker 用 `--host 0.0.0.0`。
 - 数据根默认 `~/.vytdl`：`vytdl.db`（实时队列 / 设置 / VTT 报告）+ `download_record.json`（历史）。
-- 默认下载目录 `<home>/downloads`，`VYTDL_OUTPUT_DIR` 可覆盖。
+- 默认下载目录解析链：`VYTDL_OUTPUT_DIR` → `config.json` 的 `output_dir` → `<home>/downloads`。
 - 启动时恢复 `pending` / `downloading`；取消 / 重试 / 删除可用；暂停 / 恢复返回 `success:false`。
 - `GET /api/health` 用于就绪探测；`WS /api/ws` 推送进度与队列事件。
 - 每个下载结束后追加历史，与 CLI `records` 同一份。

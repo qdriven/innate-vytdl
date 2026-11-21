@@ -18,7 +18,7 @@
 | `--home` | `~/.vytdl` | `VYTDL_HOME` | 数据根：`vytdl.db`、下载历史 |
 | `--dev` | 关 | — | 请求日志 |
 
-- 默认下载目录 `<home>/downloads`，`VYTDL_OUTPUT_DIR` 可覆盖（或改设置 `default_output_dir`）。
+- 默认下载目录解析链：`VYTDL_OUTPUT_DIR` 环境变量 → `config.json` 的 `output_dir` → `<home>/downloads`。前端设置 `default_output_dir` 仍作用于入队请求。
 - 启动横幅（stdout）：监听地址、data root、downloads 目录、static 目录（配置时）。
 - 收到 SIGINT / SIGTERM：取消进行中的下载，优雅退出。
 - CORS 允许所有来源；默认只绑回环，Docker 部署时自行控制网络暴露。

@@ -38,7 +38,7 @@
 | `--format` | `-f` | `mp4` | 合并容器，传 `--merge-output-format`；不做转码 |
 | `--quality` | `-q` | 空 | 画质选择，见 3.2 |
 | `--start` / `--end` | — | 空 | 片段裁剪起止点（`HH:MM:SS` 或秒），见 3.5 |
-| `--output` | `-o` | `.` | 输出目录（自动创建），见 3.3 |
+| `--output` | `-o` | `config.json` 的 `output_dir`，否则 `.` | 输出目录（自动创建），见 3.3 |
 | `--sub-langs` | — | `en,zh` | 逗号分隔的字幕语言列表 |
 | `--no-subs` | — | 关 | 关闭全部字幕（手动 + 自动） |
 | `--no-auto-subs` | — | 关 | 只关闭自动字幕 |
@@ -78,6 +78,7 @@
 
 - `-f <container>` 只传 `--merge-output-format <container>`，是合并容器偏好；某站点没有可合并进该容器的流时，yt-dlp 仍可能输出其他容器。没有编码转换。
 - `-o <dir>`：输出模板固定为 `<dir>/%(title)s.%(ext)s`；目录不存在会自动创建（0755）。
+- `--output` 默认值取 `config.json` 的 `output_dir`（加载时展开 `~/` 前缀；典型用途：挂载的私有云盘 / NAS 卷），未设置时为当前目录 `.`；显式 `-o` 优先。
 - 播放列表模式下每条视频落在 `<dir>/<播放列表标题>/` 子目录（标题做文件系统安全清洗，最长 120 字符）。
 
 ### 3.4 字幕
@@ -209,7 +210,7 @@
 - `--install-yt-dlp`：只执行「下载 / 更新到缓存」后退出。
 - 解析失败时报错并提示三种解决方式（显式路径 / PATH / 内嵌构建），退出码 1。
 - 解析成功时在 stderr 打印 `Using yt-dlp: <path>`。
-- `config.json` 只有 `yt_dlp_bin` 一个字段；查找顺序：`VYTDL_CONFIG` → 当前目录 `config.json` → 可执行文件目录 `config.json`。
+- `config.json` 有两个字段：`yt_dlp_bin` 与 `output_dir`（默认输出目录，`~/` 前缀会展开；`serve` 也读它）；查找顺序：`VYTDL_CONFIG` → 当前目录 `config.json` → 可执行文件目录 `config.json`。
 
 ## 7. 环境变量（CLI 侧）
 

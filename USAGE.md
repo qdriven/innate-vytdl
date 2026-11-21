@@ -119,7 +119,7 @@ Cobra 根命令的 `Use` 是 `yt-dl`，所以 `--help` 里显示 `yt-dl`；构�
 |------|------|------|
 | `-f, --format` | `mp4` | 输出合并容器（mp4 / webm / mkv…），传给 `--merge-output-format`；不做转码 |
 | `-q, --quality` | 空 | 画质：`720`、`1080`、`2160`、`best`，或任意 yt-dlp `-f` 选择器；空 = 最高 |
-| `-o, --output` | `.` | 输出目录；模板为 `<dir>/%(title)s.%(ext)s` |
+| `-o, --output` | `config.json` 的 `output_dir`，否则 `.` | 输出目录；模板为 `<dir>/%(title)s.%(ext)s`；`-o` 显式传值优先 |
 | `--start` | 空 | 裁剪起点（`HH:MM:SS` 或秒） |
 | `--end` | 空 | 裁剪终点 |
 | `--sub-langs` | `en,zh` | 字幕语言（逗号分隔） |
@@ -272,11 +272,21 @@ Cobra 根命令的 `Use` 是 `yt-dl`，所以 `--help` 里显示 `yt-dl`；构�
 export VYTDL_YTDLP_MIRROR="https://ghproxy.net/https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
 ```
 
-`config.json` 中 `yt_dlp_bin` 为空表示「自动解析」。仅当需要固定路径时才复制 `config.example.json`：
+`config.json` 中 `yt_dlp_bin` 为空表示「自动解析」；`output_dir` 为空表示用默认输出目录（CLI 当前目录，serve `<home>/downloads`）。字段：
+
+| 字段 | 语义 |
+|------|------|
+| `yt_dlp_bin` | yt-dlp 固定路径；空 = 自动解析 |
+| `output_dir` | 默认输出目录（支持 `~/` 前缀），如挂载的私有云盘路径 |
 
 ```json
-{ "yt_dlp_bin": "/opt/homebrew/bin/yt-dlp" }
+{
+  "yt_dlp_bin": "/opt/homebrew/bin/yt-dlp",
+  "output_dir": "/Volumes/懒猫云/Downloads"
+}
 ```
+
+设置后 `download` 不传 `-o` 即下载到该目录（显式 `-o` 优先）；`serve` 的默认下载目录也取该值（`VYTDL_OUTPUT_DIR` 优先）。适合把下载路径固定到 NAS / 私有云盘（懒猫私有云等）通过 SMB / WebDAV 挂载的卷。
 
 配置文件查找顺序：`VYTDL_CONFIG` → 当前目录 `config.json` → 可执行文件目录 `config.json`。
 
@@ -570,7 +580,7 @@ YouTube 越来越多地要求 **JS 运行时**来解 `n` 参数挑战。vYtDL �
 | `--home` | `~/.vytdl` | `VYTDL_HOME` | 数据根目录：`vytdl.db`、下载历史 |
 | `--dev` | 关 | — | 请求日志 |
 
-下载默认目录为 `<home>/downloads`，可用 `VYTDL_OUTPUT_DIR` 覆盖（或在前端设置 `default_output_dir`）。
+下载默认目录为 `config.json` 的 `output_dir`（若设置），否则 `<home>/downloads`；`VYTDL_OUTPUT_DIR` 优先于两者（前端设置 `default_output_dir` 仍作用于入队请求）。
 
 启动时会打印：
 
@@ -733,7 +743,7 @@ python3 batch_download.py urls.txt ./downloads --log-format csv
 | `YT_DL_BIN` | yt-dlp 路径（等价于 `--yt-dlp-bin`） | CLI / serve（serve 优先读设置里的 `yt_dlp_path`） |
 | `VYTDL_YTDLP_MIRROR` | yt-dlp 下载镜像 | CLI / 脚本 |
 | `VYTDL_HOST` / `PORT` / `VYTDL_STATIC_DIR` | serve 的 host / port / 静态目录默认值 | serve |
-| `VYTDL_OUTPUT_DIR` | serve 默认下载目录 | serve |
+| `VYTDL_OUTPUT_DIR` | serve 默认下载目录（优先于 `config.json` 的 `output_dir`） | serve |
 | `FFMPEG_PATH` | FFmpeg 路径 | serve 音频提取 |
 | `HTTP(S)_PROXY` / `ALL_PROXY` / `NO_PROXY` | 网络代理；`serve` 的元数据 / VTT 调用会过滤非标准 `*_proxy` 变量，下载子进程直接继承环境 | 两者 |
 
