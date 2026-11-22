@@ -18,7 +18,7 @@
 | `--home` | `~/.vytdl` | `VYTDL_HOME` | 数据根：`vytdl.db`、下载历史 |
 | `--dev` | 关 | — | 请求日志 |
 
-- 默认下载目录解析链：`VYTDL_OUTPUT_DIR` 环境变量 → `config.json` 的 `output_dir` → `<home>/downloads`。前端设置 `default_output_dir` 仍作用于入队请求。
+- 默认下载目录解析链：`VYTDL_OUTPUT_DIR` 环境变量 → `config.json` 的 `output_dir` → `<home>/downloads`（首次启动时种子化进设置 `default_output_dir`）。入队目录优先级：请求 `output_dir` > 设置 `default_output_dir`（前端可改）> 启动解析链。
 - 启动横幅（stdout）：监听地址、data root、downloads 目录、static 目录（配置时）。
 - 收到 SIGINT / SIGTERM：取消进行中的下载，优雅退出。
 - CORS 允许所有来源；默认只绑回环，Docker 部署时自行控制网络暴露。
@@ -69,7 +69,7 @@ daemon 只发送、不要求客户端消息（入站消息被丢弃）。事件�
 
 - 默认 `--ignore-config`（除非请求带 `config_location`），用户级 yt-dlp 配置不生效；
 - 强制 `--windows-filenames`；
-- 自动字幕加 `--sleep-subtitles 1`（防限流）；
+- 请求显式传 `write_auto_subs: true` 时加 `--sleep-subtitles 1`（防限流）；
 - 片段裁剪使用 muxed-safe 选择器并关闭 direct merge（防进度卡死）；
 - X/Twitter 自动 `twitter:api=syndication`（同 CLI）；
 - `serve` 还接受 CLI 没有的下载参数：`format_id`、`rate_limit`、`concurrent_fragments`、`embed_thumbnail` / `embed_metadata` / `embed_chapters`、`sponsorblock_remove`、`filename_template`、`po_token`、`config_location`、`cookie {mode, path, browser}`。

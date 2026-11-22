@@ -88,7 +88,7 @@ tasks:
 
   # ── yt-dlp provisioning ──────────────────────────────────
   fetch-ytdlp:
-    desc: Download yt-dlp for the current platform to the user cache
+    desc: Download yt-dlp for the current platform to ./bin (same as --install-yt-dlp)
     cmds:
       - ./scripts/fetch-ytdlp.sh
 

@@ -23,7 +23,7 @@
 
 | 命令 | 别名 | 位置参数 | 作用 |
 |------|------|----------|------|
-| `download [flags] <url> [url…]` | `dl`、`get` | ≥ 1 个 URL；`--install-yt-dlp` 时可省略 | 下载视频 / 播放列表 |
+| `download [flags] <url> [url…]` | `dl`、`get` | ≥ 1 个 URL；`--install-yt-dlp` 或 `--batch-file` 时可省略 | 下载视频 / 播放列表 |
 | `records` | — | 不接受（NoArgs） | 查询统一下载历史 |
 | `analyze [flags] [<file.vtt>]` | `an`、`ana` | 0–1 个文件；缺省读 stdin | VTT → 纯文本 / Markdown |
 | `serve` | — | 不接受 | 启动 HTTP API + WebSocket 守护进程（契约见 [`serve.md`](./serve.md)） |
@@ -58,7 +58,8 @@
 | `--retries` | — | `10` | 同时设置 `--retries` 与 `--extractor-retries` |
 | `--socket-timeout` | — | `30` | 网络超时（秒） |
 | `--force-ipv4` | — | 关 | 透传 `--force-ipv4` |
-| `--install-yt-dlp` | — | 关 | 下载 / 更新 yt-dlp 到用户缓存后退出，无需 URL |
+| `--install-yt-dlp` | — | 关 | 下载 / 更新 yt-dlp 到 `./bin` 后退出，无需 URL |
+| `--batch-file` | `-a` | 空 | 从文本文件读 URL：每行一个，`#` 注释，`-` = stdin；与位置参数合并，可与 `-j` 并发 |
 
 `download` **不透传**也**不提供**：格式 ID 精选、限速、分片并发、嵌入元数据/封面/章节、SponsorBlock、文件名模板、PO token 等 —— 这些是 `serve` 模式的下载参数（见 [`serve.md`](./serve.md)）；CLI 侧统一用 `-q` 表达画质。
 
@@ -115,6 +116,7 @@
 
 ### 3.7 多 URL 并发（`-j`）
 
+- URL 来源：位置参数 + `--batch-file`（`-a`）清单文件（每行一个 URL，`#` 注释，`-` = stdin），两处合并后统一调度；只有 `--batch-file` 时可省略位置参数。
 - `-j 1`（默认）串行；`> 1` 时用信号量控制同时在跑的 URL 数；`< 1` 按 1 处理。
 - 每个 URL 可来自不同站点；`-p` 作用于所有 URL 参数。
 - 播放列表内部条目始终逐条下载，`-j` 不会拆分单个播放列表。
@@ -123,7 +125,7 @@
 
 ### 3.8 X / Twitter
 
-- 识别域名：`x.com`、`twitter.com` **及其子域**、`vxtwitter.com`、`fxtwitter.com`、`nitter.net`（`www.` / `mobile.` 前缀忽略）。
+- 识别域名：`x.com`、`twitter.com`（含其任意子域）、`vxtwitter.com`、`fxtwitter.com`、`nitter.net`（后三者不识别子域；`www.` / `mobile.` 前缀忽略）。
 - 对上述域名的 URL，若用户没有在任何 `--extractor-args` 里显式传 `twitter:api=`，自动追加 `--extractor-args twitter:api=syndication`（公开推文开箱即用）。
 - 用户显式传任何 `twitter:api=` 时**用户优先**，不追加回退（私密 / 受限内容用 cookie + `twitter:api=graphql`）。
 - 只支持单条 `/status/<id>` 链接；不支持按 handle / 主页 / `/media` 枚举时间线，也没有日期过滤参数。一条推文里有多段视频时，给这条 status 加 `-p`。
@@ -138,14 +140,14 @@
 
 - 所有结果在整条命令结束后一次性追加到统一历史（`--record-file` / `--log-format` 决定文件），写入带锁、原子替换；契约见 [`data.md`](./data.md)。
 - 结束时打印 `Download log: <path>` 与 `Completed: X succeeded, Y failed.`
-- 运行前会把**输出目录与当前目录**里的旧双文件记录（`download_record.json|csv` + `subtitle_mapping.json|csv`）并入统一历史并删除旧文件，详见 [`data.md`](./data.md)。
+- **所有下载完成之后、新记录写入之前**，会把**输出目录与当前目录**里的旧双文件记录（`download_record.json|csv` + `subtitle_mapping.json|csv`）并入统一历史并删除旧文件，详见 [`data.md`](./data.md)。
 
 ### 3.11 输出流与退出码
 
 | 流 | 内容 |
 |----|------|
 | stdout | 纯文本进度行、`Imported N legacy record(s) into <path>`、`Download log: <path>`、`Completed: X succeeded, Y failed.`、`No pending playlist items…`（播放列表全部跳过时） |
-| stderr | `Using yt-dlp: <path>`、TUI 回退提示、导入 / 写历史的 warning |
+| stderr | `Using yt-dlp: <path>`、`Loaded N URL(s) from <file>`（`--batch-file`）、TUI 回退提示、导入 / 写历史的 warning |
 
 退出码：`0` 成功；`1` 任何错误 —— 参数校验失败（无 URL、非法 `--log-format`）、yt-dlp 不可用、**任一**下载失败（其余 URL 仍会跑完）。播放列表所有条目均已完成后重跑：打印提示并返回 `0`。
 
@@ -204,10 +206,10 @@
 2. `YT_DL_BIN` 环境变量
 3. PATH 上的 `yt-dlp` 或 `youtube-dl`
 4. 构建期内嵌二进制（`-tags embed_ytdlp`；释放为缓存目录里的 `yt-dlp-embedded`）
-5. 用户缓存目录 `vYtDL` 下的 `yt-dlp[.exe]`（macOS `~/Library/Caches/vYtDL`，Linux `~/.cache/vYtDL`，Windows `%LocalAppData%\vYtDL`）
-6. 仍缺失 → 从 GitHub Releases 自动下载（`VYTDL_YTDLP_MIRROR` 可换镜像）
+5. **`./bin/yt-dlp[.exe]`**（当前目录下的托管副本）：不存在时**自动从 GitHub Releases 下载到这里**（`VYTDL_YTDLP_MIRROR` 可换镜像）；`--install-yt-dlp` 重新下载即更新它
+6. 用户缓存目录 `vYtDL` 下的 `yt-dlp[.exe]`（旧版本的自动下载位置，只读兼容，不再往这里下载）
 
-- `--install-yt-dlp`：只执行「下载 / 更新到缓存」后退出。
+- `--install-yt-dlp`：只执行「下载 / 更新到 `./bin`」后退出。
 - 解析失败时报错并提示三种解决方式（显式路径 / PATH / 内嵌构建），退出码 1。
 - 解析成功时在 stderr 打印 `Using yt-dlp: <path>`。
 - `config.json` 有两个字段：`yt_dlp_bin` 与 `output_dir`（默认输出目录，`~/` 前缀会展开；`serve` 也读它）；查找顺序：`VYTDL_CONFIG` → 当前目录 `config.json` → 可执行文件目录 `config.json`。

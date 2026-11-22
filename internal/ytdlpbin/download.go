@@ -141,12 +141,10 @@ func resolveDownloadURL() (string, error) {
 	return DownloadURL(defaultReleaseTag)
 }
 
-// InstallOrUpdate downloads (or re-downloads) yt-dlp into the cache and returns its path.
+// InstallOrUpdate downloads (or re-downloads) yt-dlp into ./bin and returns
+// its path. Re-running it keeps the local copy up to date.
 func InstallOrUpdate() (string, error) {
-	path, err := cachedBinaryPath()
-	if err != nil {
-		return "", err
-	}
+	path := localBinaryPath()
 	if err := DownloadTo(path); err != nil {
 		return "", err
 	}

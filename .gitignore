@@ -45,3 +45,6 @@ config.local.json
 # Daemon dev data (task daemon:dev)
 /.daemon-home/
 .workbuddy/
+
+# Auto-downloaded yt-dlp (vYtDL --install-yt-dlp)
+/bin/
