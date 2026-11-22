@@ -13,7 +13,7 @@ git clone https://github.com/qdriven/innate-vytdl.git
 cd innate-vytdl
 go build -o vYtDL .          # 需要 Go 1.26+
 
-./vYtDL download --install-yt-dlp   # 可选：缓存一份 yt-dlp（无需系统安装）
+./vYtDL download --install-yt-dlp   # 可选：下载 yt-dlp 到 ./bin（缺失时下载也会自动进行）
 
 # YouTube 单视频（1080p，默认 EN+ZH 字幕）
 ./vYtDL download --no-tui -o ./downloads -q 1080 \
@@ -25,6 +25,9 @@ go build -o vYtDL .          # 需要 Go 1.26+
 
 # X/Twitter 公开视频 — 无需额外参数（自动走 syndication API）
 ./vYtDL download --no-tui -o ./downloads "https://x.com/user/status/123"
+
+# 批量下载：URL 清单文件（每行一个，# 注释）
+./vYtDL download --no-tui -a urls.txt -o ./downloads
 
 # 后台服务（Web UI 后端）：随机端口 + 静态托管前端导出
 ./vYtDL serve --port 0 --static ./out
@@ -85,8 +88,8 @@ Go 1.26+。FFmpeg 可选：片段裁剪、合并、`serve` 的音频提取需要
 1. `--yt-dlp-bin` / `config.json` 的 `yt_dlp_bin` / `YT_DL_BIN`
 2. PATH 上的 `yt-dlp` / `youtube-dl`
 3. 构建时内嵌（`-tags embed_ytdlp`）
-4. 用户缓存目录下的 `vYtDL`（macOS `~/Library/Caches/vYtDL`，Linux `~/.cache/vYtDL`，Windows `%LocalAppData%\vYtDL`）
-5. 从 GitHub Releases 自动下载
+4. `./bin/yt-dlp`：当前目录下的托管副本；本机没有 yt-dlp 时**自动下载到这里**，`--install-yt-dlp` 重新下载即更新
+5. 用户缓存目录下的旧副本（`~/Library/Caches/vYtDL` 等，只读兼容）
 
 `config.json` 支持 `yt_dlp_bin` 与 `output_dir`（默认输出目录，支持 `~/` 前缀，可指向挂载的私有云盘如懒猫私有云）；`VYTDL_CONFIG` 可指定配置文件路径。
 
@@ -137,6 +140,7 @@ USAGE.md             # CLI 完整使用文档
 |------|------|
 | [USAGE.md](./USAGE.md) | CLI 完整使用指南：命令面、参数映射、serve API、排障 |
 | [docs/spec/](./docs/spec/) | 规范集：定位与边界（`README.md`）、[CLI 契约](./docs/spec/cli.md)、数据契约（`data.md`）、serve 契约（`serve.md`） |
+| [docs/architecture.html](./docs/architecture.html) | 系统架构总览（分层框架、CLI / serve 双路径、API 面、模块清单）——浏览器打开 |
 | [docs/use-cases.md](./docs/use-cases.md) | 端到端用例：YouTube、B 站、X、多站点、serve、Agent Skill |
 | [docs/bilibili.md](./docs/bilibili.md) | 当前 yt-dlp 能下载的 B 站内容，以及登录 / 画质限制 |
 | [docs/skills-guide.md](./docs/skills-guide.md) | Skill 如何配合 CLI 在 WorkBuddy / zcode / Kimi 中使用 |

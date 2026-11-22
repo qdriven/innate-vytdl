@@ -44,7 +44,7 @@ go test ./...
 
 ./vYtDL --help
 ./vYtDL download --help
-./vYtDL download --install-yt-dlp       # 把 yt-dlp 缓存到本地（无需系统安装）
+./vYtDL download --install-yt-dlp       # 下载 yt-dlp 到 ./bin（无需系统安装）
 ./vYtDL download --no-tui -o ./downloads -q 1080 "URL"
 ```
 
@@ -52,7 +52,7 @@ go test ./...
 
 ### yt-dlp 二进制解析顺序
 
-`--yt-dlp-bin` / `config.json` `yt_dlp_bin` / `YT_DL_BIN` → PATH（`yt-dlp` / `youtube-dl`）→ 内嵌（`-tags embed_ytdlp`）→ 用户缓存目录下的 `vYtDL`（macOS `~/Library/Caches/vYtDL`，Linux `~/.cache/vYtDL`，Windows `%LocalAppData%\vYtDL`）→ GitHub 自动下载。
+`--yt-dlp-bin` / `config.json` `yt_dlp_bin` / `YT_DL_BIN` → PATH（`yt-dlp` / `youtube-dl`）→ 内嵌（`-tags embed_ytdlp`）→ `./bin/yt-dlp`（不存在时自动从 GitHub 下载到这里；`--install-yt-dlp` 更新它）→ 用户缓存目录旧副本（只读兼容）。
 
 GitHub 慢：`export VYTDL_YTDLP_MIRROR='https://ghproxy.net/https://github.com/yt-dlp/yt-dlp/releases/latest/download/'`
 
@@ -73,7 +73,7 @@ main.go -> cmd.Execute()
 | `cmd/analyze.go` | VTT → 文本 / markdown |
 | `cmd/serve.go` | daemon 启动参数、优雅退出 |
 | `internal/downloader/` | buildArgs、进度解析、播放列表续传、X/Twitter syndication 回退 |
-| `internal/ytdlpbin/` | yt-dlp 解析/安装（PATH、内嵌、缓存下载） |
+| `internal/ytdlpbin/` | yt-dlp 解析/安装（PATH、内嵌、`./bin` 自动下载） |
 | `internal/tui/` | Bubble Tea 进度 UI |
 | `internal/record/` | 统一历史 `~/.vytdl/download_record.json`（含字幕路径） |
 | `internal/playliststate/` | `.playlist_state.json` 续传状态，不是下载历史 |
@@ -99,6 +99,9 @@ main.go -> cmd.Execute()
 
 # 并发多 URL（建议 1-3）
 ./vYtDL download --no-tui -j 2 -o ./downloads "URL1" "URL2"
+
+# 批量：URL 清单文件（每行一个 URL，# 注释；- = stdin）
+./vYtDL download --no-tui -a urls.txt -o ./downloads
 
 # VTT 字幕分析（text / markdown；可读 stdin）
 ./vYtDL analyze --mode text video.en.vtt
@@ -172,7 +175,7 @@ vYtDL 把 B 站 URL 交给本机 yt-dlp（无域名白名单）。2026-11-07 用
 
 ## X / Twitter
 
-只下载**单条推文**。地址必须是 `https://x.com/<user>/status/<id>`（或 `twitter.com`、`t.co` 短链）。公开推文自动加 `twitter:api=syndication`。
+只下载**单条推文**。地址必须是 `https://x.com/<user>/status/<id>`（或 `twitter.com`）。公开推文自动加 `twitter:api=syndication`。`t.co` 短链不在自动识别范围内：先展开成 `x.com` 地址再用（或交给 yt-dlp 自身的短链跳转，但 syndication 回退不保证生效）。
 
 只给 handle、主页或 `/media` 时，下不了该账号的视频，也筛不了「近 3 个月」。yt-dlp 2026.08.19 没有用户时间线 extractor；syndication 按一条推文取视频；`--playlist` 不会枚举发帖；CLI 没有日期过滤参数。不要把 `https://x.com/<handle>` 配上 `--playlist` 去试。
 

@@ -23,6 +23,7 @@ go test ./...
 | 数据 / 历史字段契约 | `docs/spec/data.md` |
 | 改 CLI 参数或行为 | `USAGE.md` 的 `download` 参数表 + `internal/downloader` |
 | 端到端演示 / 写示例 | `docs/use-cases.md` |
+| 系统架构 / 模块地图 | `docs/architecture.html`（浏览器打开） |
 | 改 `serve` API | `USAGE.md` 的 `serve` 一节 + `internal/server` |
 | 写 / 改 Agent Skill | 对应 `skills/*/SKILL.md` + `docs/skills-guide.md` |
 | B 站地址范围 | `docs/bilibili.md` |
@@ -39,13 +40,13 @@ cmd/records.go             历史查询；旧记录导入
 cmd/analyze.go             VTT → text / markdown
 cmd/serve.go               daemon 启动参数；信号优雅退出
 internal/downloader/       buildArgs()、yt-dlp 子进程、进度解析、播放列表续传、X syndication
-internal/ytdlpbin/         yt-dlp 解析：显式 → PATH → 内嵌 → 缓存 → 下载
+internal/ytdlpbin/         yt-dlp 解析：显式 → PATH → 内嵌 → ./bin（自动下载目标）→ 缓存旧副本
 internal/tui/              Bubble Tea 进度（无 TTY 回退纯文本）
 internal/record/           统一历史 Catalog v1（JSON/CSV、锁、原子写、旧文件导入）
 internal/playliststate/    <output>/<title>/.playlist_state.json
 internal/vtt/              WebVTT 解析（analyze + serve 共用）
 internal/server/           serve：HTTP API、WS Hub、队列、SQLite、VTT 分析、音频提取
-internal/config/           config.json（仅 yt_dlp_bin；VYTDL_CONFIG 可覆盖）
+internal/config/           config.json（yt_dlp_bin、output_dir；VYTDL_CONFIG 可覆盖）
 scripts/                   build / fetch-ytdlp / shell 封装
 skills/                    Agent Skill 规范源
 docs/                      spec、use-cases、bilibili、skills-guide

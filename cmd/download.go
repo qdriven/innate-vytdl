@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -41,6 +43,7 @@ var (
 	flagResetState   bool
 	flagConcurrency  int
 	flagInstallYTDLP bool
+	flagBatchFile    string
 )
 
 func init() {
@@ -96,7 +99,9 @@ func init() {
 	dl.Flags().IntVarP(&flagConcurrency, "concurrency", "j", 1,
 		"Maximum number of concurrent downloads (1 = sequential)")
 	dl.Flags().BoolVar(&flagInstallYTDLP, "install-yt-dlp", false,
-		"Download/update yt-dlp into the user cache dir and exit")
+		"Download/update yt-dlp into ./bin and exit")
+	dl.Flags().StringVarP(&flagBatchFile, "batch-file", "a", "",
+		"Read URLs from a text file (one per line, # comments, '-' = stdin); combined with positional URLs")
 
 	rootCmd.AddCommand(dl)
 }
@@ -115,7 +120,7 @@ var downloadCmd = &cobra.Command{
 	Aliases: []string{"dl", "get"},
 	Short:   "Download video(s) from any yt-dlp-supported site",
 	Args: func(cmd *cobra.Command, args []string) error {
-		if flagInstallYTDLP {
+		if flagInstallYTDLP || flagBatchFile != "" {
 			return nil
 		}
 		return cobra.MinimumNArgs(1)(cmd, args)
@@ -131,6 +136,18 @@ func runDownload(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Printf("yt-dlp installed at %s\n", path)
 		return nil
+	}
+
+	if flagBatchFile != "" {
+		urls, err := readBatchURLs(flagBatchFile)
+		if err != nil {
+			return err
+		}
+		args = append(args, urls...)
+		fmt.Fprintf(os.Stderr, "Loaded %d URL(s) from %s\n", len(urls), flagBatchFile)
+	}
+	if len(args) == 0 {
+		return fmt.Errorf("no URLs to download: pass <url> arguments or use --batch-file")
 	}
 
 	logFormat := strings.ToLower(strings.TrimSpace(flagLogFormat))
@@ -351,4 +368,34 @@ func validateYTDLPAvailability(bin string) (string, error) {
 	}
 	fmt.Fprintf(os.Stderr, "Using yt-dlp: %s\n", path)
 	return path, nil
+}
+
+// readBatchURLs reads URLs from a text file: one URL per line, blank lines
+// and #-prefixed comments are skipped. A path of "-" reads from stdin.
+func readBatchURLs(path string) ([]string, error) {
+	var r io.Reader
+	if path == "-" {
+		r = os.Stdin
+	} else {
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read batch file %q: %w", path, err)
+		}
+		defer f.Close()
+		r = f
+	}
+
+	var urls []string
+	sc := bufio.NewScanner(r)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		urls = append(urls, line)
+	}
+	if err := sc.Err(); err != nil {
+		return nil, fmt.Errorf("read batch file %q: %w", path, err)
+	}
+	return urls, nil
 }

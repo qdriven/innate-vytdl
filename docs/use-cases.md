@@ -24,7 +24,7 @@ go build -o vYtDL .
 
 # 2. 确认/安装 yt-dlp（三种方式任选）
 yt-dlp --version                       # 已在 PATH
-./vYtDL download --install-yt-dlp      # 缓存到用户目录，无需系统安装
+./vYtDL download --install-yt-dlp      # 下载到 ./bin，无需系统安装
 # 或构建时内嵌：./scripts/fetch-ytdlp.sh --embed && go build -tags embed_ytdlp -o vYtDL .
 
 # 3. 可选：FFmpeg（片段裁剪、合并、音频提取、serve 的 extract-audio）
@@ -209,6 +209,20 @@ ffmpeg -version
   "https://x.com/user/status/123" \
   "https://www.tiktok.com/@user/video/1234" \
   "https://www.xiaohongshu.com/explore/xxxxxx"
+```
+
+链接很多时，用 URL 清单文件（每行一个 URL，`#` 开头为注释），不必逐个贴到命令行：
+
+```bash
+cat > urls.txt <<'EOF'
+# 每行一个 URL，# 开头为注释
+https://www.youtube.com/watch?v=VIDEO_ID
+https://www.bilibili.com/video/BVxxxxxx
+https://x.com/user/status/123
+EOF
+
+./vYtDL download --no-tui -a urls.txt -j 3 -o ./downloads
+cat urls.txt | ./vYtDL download --no-tui -a - -o ./downloads     # 也可从 stdin 读
 ```
 
 **预期产物**：每条链接各自产生成片/字幕；所有结果在同一次命令结束时写入同一份历史。

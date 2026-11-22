@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>vYtDL 架构总览</title>
+<style>
+  :root {
+    --bg: #faf8f3;
+    --ink: #2a2a28;
+    --muted: #6f6b62;
+    --rule: #e5dfd2;
+    --accent: #1f6f8b;
+    --accent-soft: #e3eef3;
+    --box: #ffffff;
+    --layer-fill: #f2eee4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    line-height: 1.8; font-size: 15px;
+  }
+  .page { max-width: 1080px; margin: 0 auto; padding: 48px 28px 72px; }
+  header { border-bottom: 2px solid var(--ink); padding-bottom: 20px; margin-bottom: 36px; }
+  h1 { font-family: "Songti SC", "Noto Serif CJK SC", Georgia, serif;
+       font-size: 30px; margin: 0 0 6px; letter-spacing: 0.5px; }
+  .subtitle { color: var(--muted); font-size: 14px; }
+  h2 { font-family: "Songti SC", "Noto Serif CJK SC", Georgia, serif;
+       font-size: 21px; margin: 48px 0 6px; }
+  h2 .no { color: var(--accent); margin-right: 8px; }
+  p { margin: 8px 0; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+         font-size: 0.88em; background: #f0ece1; padding: 1px 5px; border-radius: 4px; }
+  .caption { color: var(--muted); font-size: 13.5px; margin: 10px 0 0; }
+  .meta-note { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+  figure { margin: 18px 0 0; }
+  svg text { font-family: -apple-system, "PingFang SC", sans-serif; }
+  svg .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  table { border-collapse: collapse; width: 100%; margin-top: 14px; font-size: 14px; }
+  th { text-align: left; font-weight: 600; border-bottom: 2px solid var(--ink);
+       padding: 6px 10px; white-space: nowrap; }
+  td { border-bottom: 1px solid var(--rule); padding: 6px 10px; vertical-align: top; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .bench-track { display: block; height: 10px; border-radius: 5px;
+                 background: var(--rule); min-width: 120px; }
+  .bench-fill { display: block; height: 10px; border-radius: 5px; background: var(--accent);
+                width: calc(var(--pct) * 1%); }
+  .ep-group td:first-child { font-weight: 600; white-space: nowrap; }
+  ul.facts { padding-left: 22px; }
+  ul.facts li { margin: 6px 0; }
+  .tag { display: inline-block; font-size: 12px; color: var(--accent);
+         border: 1px solid var(--accent); border-radius: 10px; padding: 0 8px;
+         margin-left: 6px; vertical-align: 2px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <h1>vYtDL 架构总览</h1>
+  <div class="subtitle">Go module <code>github.com/innate/yt-dl</code> · Cobra 根命令 <code>yt-dl</code> · 二进制 <code>vYtDL</code></div>
+  <div class="meta-note">统计口径：本页所有模块名、行数、依赖边来自 2026-11-22 工作区的代码清点（34 个 .go/.py 文件、8,126 行，其中 8 个 <code>*_test.go</code>；<code>scripts/</code> 的 .sh 未计入行数）。路由表来自 <code>internal/server/handlers.go</code> 的 <code>mux.HandleFunc</code> 注册。</div>
+</header>
+
+<!-- ============ 图 1：分层框架 ============ -->
+<h2><span class="no">①</span>分层框架：仓库分几层，依赖朝哪边流</h2>
+<p>三层结构：入口装配（<code>cmd</code>）→ 领域服务（<code>internal</code> 四个服务包）→ 共享基础（四个基础包）。右侧虚线框是与代码同库的文档 / 工具资产，不参与编译依赖。底部是运行期才触碰的系统边界。</p>
+
+<figure>
+<svg viewBox="0 0 1180 800" role="img" aria-label="vYtDL 分层架构图" style="width:100%;height:auto">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f6f8b"/>
+    </marker>
+    <marker id="arrowg" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9a958a"/>
+    </marker>
+  </defs>
+
+  <!-- ① 入口层 -->
+  <text x="20" y="34" font-size="13" fill="#6f6b62" font-weight="600">① 入口 · 装配</text>
+  <rect x="16" y="46" width="884" height="116" rx="10" fill="#f2eee4" stroke="#e5dfd2"/>
+  <g>
+    <rect x="36" y="64" width="130" height="80" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="52" y="92" font-size="14" font-weight="600" fill="#2a2a28">main.go</text>
+    <text x="52" y="114" font-size="11" fill="#6f6b62">7 行 · cmd.Execute()</text>
+  </g>
+  <g>
+    <rect x="190" y="64" width="690" height="80" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="206" y="92" font-size="14" font-weight="600" fill="#2a2a28">cmd<span style="fill:#6f6b62;font-weight:400">（Cobra 命令装配）</span></text>
+    <text x="206" y="114" font-size="11.5" class="mono" fill="#1f6f8b">download · records · analyze · serve · root</text>
+    <text x="206" y="132" font-size="11" fill="#6f6b62">6 文件 · 900 行 · flags → Options，worker pool，历史写入</text>
+  </g>
+  <path d="M166,104 L188,104" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- ② 服务层 -->
+  <text x="20" y="196" font-size="13" fill="#6f6b62" font-weight="600">② 领域服务 · internal/</text>
+  <rect x="16" y="208" width="884" height="150" rx="10" fill="#f2eee4" stroke="#e5dfd2"/>
+  <g>
+    <rect x="36" y="226" width="196" height="112" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="52" y="252" font-size="14" font-weight="600" fill="#2a2a28">downloader</text>
+    <text x="52" y="272" font-size="11" class="mono" fill="#1f6f8b">internal/downloader/</text>
+    <text x="52" y="292" font-size="11" fill="#6f6b62">buildArgs · yt-dlp 子进程</text>
+    <text x="52" y="308" font-size="11" fill="#6f6b62">进度解析 · X syndication</text>
+    <text x="52" y="330" font-size="11" fill="#6f6b62">3 文件 · 1,261 行</text>
+  </g>
+  <g>
+    <rect x="252" y="226" width="196" height="112" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="268" y="252" font-size="14" font-weight="600" fill="#2a2a28">server <span style="font-size:11px;fill:#1f6f8b">41% 代码</span></text>
+    <text x="268" y="272" font-size="11" class="mono" fill="#1f6f8b">internal/server/</text>
+    <text x="268" y="292" font-size="11" fill="#6f6b62">HTTP API · WS · 队列 · SQLite</text>
+    <text x="268" y="308" font-size="11" fill="#6f6b62">元数据 · VTT 分析 · 音频提取</text>
+    <text x="268" y="330" font-size="11" fill="#6f6b62">10 文件 · 3,327 行</text>
+  </g>
+  <g>
+    <rect x="468" y="226" width="196" height="112" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="484" y="252" font-size="14" font-weight="600" fill="#2a2a28">record</text>
+    <text x="484" y="272" font-size="11" class="mono" fill="#1f6f8b">internal/record/</text>
+    <text x="484" y="292" font-size="11" fill="#6f6b62">统一下载历史 Catalog v1</text>
+    <text x="484" y="308" font-size="11" fill="#6f6b62">JSON/CSV · 锁 · 原子写</text>
+    <text x="484" y="330" font-size="11" fill="#6f6b62">2 文件 · 962 行</text>
+  </g>
+  <g>
+    <rect x="684" y="226" width="196" height="112" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="700" y="252" font-size="14" font-weight="600" fill="#2a2a28">vtt</text>
+    <text x="700" y="272" font-size="11" class="mono" fill="#1f6f8b">internal/vtt/</text>
+    <text x="700" y="292" font-size="11" fill="#6f6b62">WebVTT 解析</text>
+    <text x="700" y="308" font-size="11" fill="#6f6b62">analyze 与 serve 共用</text>
+    <text x="700" y="330" font-size="11" fill="#6f6b62">2 文件 · 485 行</text>
+  </g>
+
+  <!-- ③ 基础层 -->
+  <text x="20" y="392" font-size="13" fill="#6f6b62" font-weight="600">③ 共享基础 · internal/</text>
+  <rect x="16" y="404" width="884" height="126" rx="10" fill="#f2eee4" stroke="#e5dfd2"/>
+  <g>
+    <rect x="36" y="422" width="196" height="92" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="52" y="448" font-size="14" font-weight="600" fill="#2a2a28">ytdlpbin</text>
+    <text x="52" y="468" font-size="11" class="mono" fill="#1f6f8b">internal/ytdlpbin/</text>
+    <text x="52" y="488" font-size="11" fill="#6f6b62">二进制解析：PATH → 内嵌 → ./bin</text>
+    <text x="52" y="506" font-size="11" fill="#6f6b62">5 文件 · 465 行</text>
+  </g>
+  <g>
+    <rect x="252" y="422" width="196" height="92" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="268" y="448" font-size="14" font-weight="600" fill="#2a2a28">playliststate</text>
+    <text x="268" y="468" font-size="11" class="mono" fill="#1f6f8b">internal/playliststate/</text>
+    <text x="268" y="488" font-size="11" fill="#6f6b62">.playlist_state.json 续传</text>
+    <text x="268" y="506" font-size="11" fill="#6f6b62">1 文件 · 210 行</text>
+  </g>
+  <g>
+    <rect x="468" y="422" width="196" height="92" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="484" y="448" font-size="14" font-weight="600" fill="#2a2a28">tui</text>
+    <text x="484" y="468" font-size="11" class="mono" fill="#1f6f8b">internal/tui/</text>
+    <text x="484" y="488" font-size="11" fill="#6f6b62">Bubble Tea 进度（无 TTY 回退）</text>
+    <text x="484" y="506" font-size="11" fill="#6f6b62">1 文件 · 205 行</text>
+  </g>
+  <g>
+    <rect x="684" y="422" width="196" height="92" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="700" y="448" font-size="14" font-weight="600" fill="#2a2a28">config</text>
+    <text x="700" y="468" font-size="11" class="mono" fill="#1f6f8b">internal/config/</text>
+    <text x="700" y="488" font-size="11" fill="#6f6b62">config.json：yt_dlp_bin · output_dir</text>
+    <text x="700" y="506" font-size="11" fill="#6f6b62">2 文件 · 169 行</text>
+  </g>
+
+  <!-- 侧挂：文档与工具资产 -->
+  <text x="924" y="34" font-size="13" fill="#6f6b62" font-weight="600">文档与工具资产</text>
+  <rect x="920" y="46" width="244" height="484" rx="10" fill="none" stroke="#c9c2b0" stroke-dasharray="6 5"/>
+  <text x="938" y="78" font-size="13" font-weight="600" fill="#2a2a28">docs/</text>
+  <text x="938" y="99" font-size="11" fill="#6f6b62">spec（cli·data·serve 契约）</text>
+  <text x="938" y="117" font-size="11" fill="#6f6b62">use-cases · bilibili · skills-guide</text>
+  <text x="938" y="151" font-size="13" font-weight="600" fill="#2a2a28">skills/</text>
+  <text x="938" y="172" font-size="11" fill="#6f6b62">vytdl-cli · download-record</text>
+  <text x="938" y="190" font-size="11" fill="#6f6b62">x-video-dl（含 x_dl.sh）</text>
+  <text x="938" y="224" font-size="13" font-weight="600" fill="#2a2a28">scripts/</text>
+  <text x="938" y="245" font-size="11" fill="#6f6b62">build / fetch-ytdlp /</text>
+  <text x="938" y="263" font-size="11" fill="#6f6b62">download_video / cut_mp3</text>
+  <text x="938" y="297" font-size="13" font-weight="600" fill="#2a2a28">顶层文档</text>
+  <text x="938" y="318" font-size="11" fill="#6f6b62">README · USAGE · AGENTS</text>
+  <text x="938" y="336" font-size="11" fill="#6f6b62">Taskfile.yml</text>
+  <text x="938" y="500" font-size="11" fill="#9a958a">虚线：不参与编译依赖</text>
+
+  <!-- 系统边界 -->
+  <text x="20" y="562" font-size="13" fill="#6f6b62" font-weight="600">系统边界 · 运行期外部依赖</text>
+  <rect x="16" y="574" width="1148" height="116" rx="10" fill="#eceade" stroke="#d8d2c2"/>
+  <g font-size="12.5" fill="#2a2a28">
+    <text x="40" y="608" font-weight="600">yt-dlp 子进程</text>
+    <text x="40" y="630" font-size="11" fill="#6f6b62">所有下载的实际执行者</text>
+    <text x="240" y="608" font-weight="600">FFmpeg</text>
+    <text x="240" y="630" font-size="11" fill="#6f6b62">合并 / 裁剪 / 音频提取</text>
+    <text x="420" y="608" font-weight="600">SQLite（modernc.org/sqlite）</text>
+    <text x="420" y="630" font-size="11" fill="#6f6b62">仅 serve：vytdl.db 队列库</text>
+    <text x="680" y="608" font-weight="600">GitHub Releases</text>
+    <text x="680" y="630" font-size="11" fill="#6f6b62">自动下载 yt-dlp 到 ./bin</text>
+    <text x="900" y="608" font-weight="600">文件系统</text>
+    <text x="900" y="630" font-size="11" fill="#6f6b62">~/.vytdl · ./bin · downloads/</text>
+    <text x="40" y="668" font-weight="600">WebSocket 前端</text>
+    <text x="160" y="668" font-size="11" fill="#6f6b62">serve 模式的 Web UI（经 HTTP API + WS Hub）</text>
+    <text x="560" y="668" font-weight="600">视频站点</text>
+    <text x="650" y="668" font-size="11" fill="#6f6b62">当前 yt-dlp extractor 覆盖的全部站点（无域名白名单）</text>
+  </g>
+
+  <!-- 依赖箭头：main → cmd -->
+  <!-- cmd → 四个服务包 -->
+  <path d="M300,146 L160,224" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M400,146 L330,224" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M500,146 L556,224" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M600,146 L770,224" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <!-- 层内：server → downloader / record / vtt -->
+  <path d="M252,282 L234,282" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M448,282 L466,282" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M664,282 L682,282" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <!-- 服务层 → 基础层：downloader → ytdlpbin / playliststate -->
+  <path d="M134,338 L134,420" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M230,338 L300,420" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <!-- 服务层 → 系统边界（经模块间隙走线） -->
+  <path d="M242,360 L242,572" stroke="#9a958a" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowg)"/>
+  <path d="M458,360 L458,572" stroke="#9a958a" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowg)"/>
+
+  <!-- 图例 -->
+  <g font-size="12" fill="#6f6b62">
+    <path d="M20,722 L56,722" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow)"/>
+    <text x="64" y="726">装配 / 包依赖（import）</text>
+    <path d="M230,722 L266,722" stroke="#9a958a" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowg)"/>
+    <text x="274" y="726">运行期外部调用（子进程 / 文件 / 网络）</text>
+    <rect x="560" y="712" width="18" height="14" rx="3" fill="none" stroke="#c9c2b0" stroke-dasharray="4 3"/>
+    <text x="586" y="726">同库资产，非编译依赖</text>
+  </g>
+  <text x="20" y="762" font-size="12" fill="#9a958a">注：cmd 对基础层（tui · ytdlpbin · config）的直接依赖、record/tui 对 downloader 的类型依赖未画线，完整 16 条依赖边见下表。</text>
+</svg>
+<figcaption class="caption">这张图回答：vYtDL 由哪几层组成、包依赖朝哪个方向流。所有箭头都可以在对应包的 import 里核对。</figcaption>
+</figure>
+
+<figure>
+<table>
+  <thead><tr><th>依赖边（import 计数）</th><th>依赖边（import 计数）</th></tr></thead>
+  <tbody>
+    <tr><td><code>main.go → cmd</code> ×1</td><td><code>cmd → config</code> ×2 · <code>cmd → record</code> ×2</td></tr>
+    <tr><td><code>cmd → downloader</code> ×1 · <code>cmd → tui</code> ×1</td><td><code>cmd → vtt</code> ×1 · <code>cmd → ytdlpbin</code> ×1 · <code>cmd → server</code> ×1</td></tr>
+    <tr><td><code>server → downloader</code> ×1 · <code>server → record</code> ×2</td><td><code>server → vtt</code> ×1 · <code>server → ytdlpbin</code> ×1</td></tr>
+    <tr><td><code>downloader → playliststate</code> ×2</td><td><code>downloader → ytdlpbin</code> ×1</td></tr>
+    <tr><td><code>record → downloader</code> ×2 <span class="tag">共享类型</span></td><td><code>tui → downloader</code> ×1 <span class="tag">共享类型</span></td></tr>
+  </tbody>
+</table>
+<figcaption class="caption">全部 16 条内部依赖边（import 计数来自清点脚本）。<code>DownloadResult</code> / <code>ProgressUpdate</code> 等领域类型定义在 <code>internal/downloader</code>，所以 record 和 tui 反向 import 它。</figcaption>
+</figure>
+
+<!-- ============ 图 2：两条运行路径 ============ -->
+<h2><span class="no">②</span>两条运行路径：CLI 与 serve 共享同一个下载核心</h2>
+<p>CLI（<code>download</code> 命令）和守护进程（<code>serve</code>）是两条独立的装配路径，但都落在 <code>internal/downloader</code> 这个核心上——yt-dlp 子进程、进度解析、播放列表续传只有一份实现。</p>
+
+<figure>
+<svg viewBox="0 0 1180 800" role="img" aria-label="CLI 与 serve 运行路径图" style="width:100%;height:auto">
+  <defs>
+    <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f6f8b"/>
+    </marker>
+    <marker id="arrow2g" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9a958a"/>
+    </marker>
+  </defs>
+
+  <!-- CLI 泳道 -->
+  <text x="20" y="34" font-size="13" fill="#6f6b62" font-weight="600">CLI 路径 · vYtDL download</text>
+  <rect x="16" y="46" width="884" height="130" rx="10" fill="#f2eee4" stroke="#e5dfd2"/>
+  <g>
+    <rect x="36" y="66" width="150" height="92" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="52" y="94" font-size="13.5" font-weight="600" fill="#2a2a28">终端 / 脚本</text>
+    <text x="52" y="116" font-size="11" fill="#6f6b62">位置参数 URL +</text>
+    <text x="52" y="134" font-size="11" fill="#6f6b62"><tspan class="mono" fill="#1f6f8b">-a</tspan> 清单文件 / stdin</text>
+  </g>
+  <g>
+    <rect x="240" y="66" width="240" height="92" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="256" y="94" font-size="13.5" font-weight="600" fill="#2a2a28">cmd/download</text>
+    <text x="256" y="116" font-size="11" fill="#6f6b62">flags → Options · worker pool（-j）</text>
+    <text x="256" y="134" font-size="11" fill="#6f6b62">结束统一写历史</text>
+  </g>
+  <g>
+    <rect x="540" y="66" width="160" height="92" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="556" y="94" font-size="13.5" font-weight="600" fill="#2a2a28">record</text>
+    <text x="556" y="116" font-size="11" fill="#6f6b62">追加统一历史</text>
+    <text x="556" y="134" font-size="11" class="mono" fill="#1f6f8b">record.json</text>
+  </g>
+  <g>
+    <rect x="740" y="66" width="140" height="92" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="756" y="94" font-size="13.5" font-weight="600" fill="#2a2a28">tui</text>
+    <text x="756" y="116" font-size="11" fill="#6f6b62">Bubble Tea 进度</text>
+    <text x="756" y="134" font-size="11" fill="#6f6b62">无 TTY 回退纯文本</text>
+  </g>
+  <path d="M186,112 L238,112" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow2)"/>
+  <path d="M480,112 L538,112" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow2)"/>
+
+  <!-- 共享核心 -->
+  <text x="20" y="216" font-size="13" fill="#6f6b62" font-weight="600">共享下载核心 · 只有一份实现</text>
+  <rect x="16" y="228" width="884" height="180" rx="10" fill="#e3eef3" stroke="#bcd4de"/>
+  <g>
+    <rect x="36" y="250" width="260" height="100" rx="8" fill="#ffffff" stroke="#a8c4d0"/>
+    <text x="52" y="278" font-size="14" font-weight="600" fill="#1f6f8b">downloader</text>
+    <text x="52" y="300" font-size="11" fill="#6f6b62">buildArgs（画质/字幕/裁剪/透传）</text>
+    <text x="52" y="318" font-size="11" fill="#6f6b62">进度行解析 → ProgressUpdate</text>
+    <text x="52" y="336" font-size="11" fill="#6f6b62">X 自动 syndication · 播放列表逐条</text>
+  </g>
+  <g>
+    <rect x="360" y="250" width="200" height="100" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="376" y="278" font-size="14" font-weight="600" fill="#2a2a28">yt-dlp 子进程</text>
+    <text x="376" y="300" font-size="11" fill="#6f6b62">--newline --progress</text>
+    <text x="376" y="318" font-size="11" fill="#6f6b62">--print-json</text>
+    <text x="376" y="336" font-size="11" fill="#6f6b62">由 ytdlpbin 解析路径</text>
+  </g>
+  <g>
+    <rect x="624" y="250" width="160" height="100" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="640" y="278" font-size="14" font-weight="600" fill="#2a2a28">视频站点</text>
+    <text x="640" y="300" font-size="11" fill="#6f6b62">yt-dlp extractor</text>
+    <text x="640" y="318" font-size="11" fill="#6f6b62">覆盖的全部站点</text>
+  </g>
+  <g>
+    <rect x="36" y="366" width="200" height="34" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="52" y="388" font-size="11.5" fill="#2a2a28">playliststate · 续传状态</text>
+  </g>
+  <g>
+    <rect x="290" y="366" width="270" height="34" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="306" y="388" font-size="11.5" fill="#2a2a28">输出目录（config output_dir / -o / 云盘挂载）+ 字幕</text>
+  </g>
+  <path d="M296,300 L358,300" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow2)"/>
+  <path d="M560,300 L622,300" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow2)"/>
+  <path d="M136,350 L136,364" stroke="#1f6f8b" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arrow2)"/>
+  <path d="M425,350 L425,364" stroke="#9a958a" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arrow2g)"/>
+
+  <!-- serve 泳道 -->
+  <text x="20" y="446" font-size="13" fill="#6f6b62" font-weight="600">serve 路径 · vYtDL serve（HTTP + WS 守护进程）</text>
+  <rect x="16" y="458" width="884" height="300" rx="10" fill="#f2eee4" stroke="#e5dfd2"/>
+  <g>
+    <rect x="36" y="478" width="150" height="92" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="52" y="506" font-size="13.5" font-weight="600" fill="#2a2a28">Web 前端</text>
+    <text x="52" y="528" font-size="11" fill="#6f6b62">浏览器 / 桌面壳</text>
+    <text x="52" y="546" font-size="11" fill="#6f6b62">HTTP + WebSocket</text>
+  </g>
+  <g>
+    <rect x="240" y="478" width="220" height="92" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="256" y="506" font-size="13.5" font-weight="600" fill="#2a2a28">handlers · 23 端点</text>
+    <text x="256" y="528" font-size="11" fill="#6f6b62">统一 envelope</text>
+    <text x="256" y="546" font-size="11" class="mono" fill="#1f6f8b">{success,data|error}</text>
+  </g>
+  <g>
+    <rect x="510" y="478" width="180" height="92" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="526" y="506" font-size="13.5" font-weight="600" fill="#2a2a28">queue · 队列</text>
+    <text x="526" y="528" font-size="11" fill="#6f6b62">并发 1–10（默认 3）</text>
+    <text x="526" y="546" font-size="11" fill="#6f6b62">取消 / 重试 / 删除</text>
+  </g>
+  <g>
+    <rect x="740" y="478" width="140" height="92" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="756" y="506" font-size="13.5" font-weight="600" fill="#2a2a28">hub · WS</text>
+    <text x="756" y="528" font-size="11" fill="#6f6b62">queue:update 等</text>
+    <text x="756" y="546" font-size="11" fill="#6f6b62">事件广播</text>
+  </g>
+  <g>
+    <rect x="240" y="608" width="220" height="66" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="256" y="634" font-size="13" font-weight="600" fill="#2a2a28">database · SQLite</text>
+    <text x="256" y="656" font-size="11" class="mono" fill="#1f6f8b">vytdl.db</text>
+    <text x="256" y="670" font-size="10.5" fill="#6f6b62">downloads · settings · vtt_reports</text>
+  </g>
+  <g>
+    <rect x="510" y="608" width="180" height="66" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="526" y="634" font-size="13" font-weight="600" fill="#2a2a28">meta · 元数据</text>
+    <text x="526" y="656" font-size="11" fill="#6f6b62">yt-dlp -J 取信息 / 格式</text>
+  </g>
+  <g>
+    <rect x="740" y="608" width="140" height="130" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="756" y="634" font-size="13" font-weight="600" fill="#2a2a28">分析 / 音频</text>
+    <text x="756" y="656" font-size="11" fill="#6f6b62">vttanalyzer → vtt</text>
+    <text x="756" y="674" font-size="11" fill="#6f6b62">audio → FFmpeg</text>
+    <text x="756" y="692" font-size="11" fill="#6f6b62">报告存 vtt_reports</text>
+  </g>
+  <g>
+    <rect x="36" y="608" width="160" height="66" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="52" y="634" font-size="13" font-weight="600" fill="#2a2a28">record</text>
+    <text x="52" y="656" font-size="11" fill="#6f6b62">与 CLI 同一份历史</text>
+  </g>
+  <g>
+    <rect x="36" y="700" width="160" height="38" rx="8" fill="#ffffff" stroke="#d8d2c2"/>
+    <text x="52" y="724" font-size="11.5" fill="#2a2a28">静态托管 --static（SPA）</text>
+  </g>
+
+  <!-- serve 内部箭头 -->
+  <path d="M186,524 L238,524" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow2)"/>
+  <path d="M460,524 L508,524" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow2)"/>
+  <path d="M690,524 L738,524" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow2)"/>
+  <path d="M600,572 L600,606" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow2)"/>
+  <path d="M440,572 L540,606" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow2)"/>
+  <path d="M450,572 L790,606" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow2)"/>
+  <path d="M270,572 L140,606" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow2)"/>
+
+  <!-- hub → 前端：WS 事件回传 -->
+  <path d="M810,574 L810,590 L120,590 L120,572" stroke="#9a958a" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#arrow2g)"/>
+  <text x="200" y="584" font-size="11" fill="#6f6b62">WS 事件（queue:update · download:progress …）</text>
+
+  <!-- 跨泳道：cmd/download → downloader（Options 下行） -->
+  <path d="M280,160 L180,248" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow2)"/>
+  <text x="292" y="208" font-size="11" fill="#1f6f8b" font-weight="600">Options</text>
+  <!-- downloader → tui（进度上行） -->
+  <path d="M150,246 L150,196 L810,196 L810,162" stroke="#9a958a" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#arrow2g)"/>
+  <text x="330" y="190" font-size="11" fill="#6f6b62">progressCh 进度流</text>
+  <!-- queue → 共享核心 -->
+  <path d="M600,476 L600,412" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow2)"/>
+  <text x="612" y="448" font-size="11" fill="#1f6f8b" font-weight="600">复用 downloader 核心</text>
+
+  <!-- 图例 -->
+  <g font-size="12" fill="#6f6b62">
+    <path d="M930,506 L966,506" stroke="#1f6f8b" stroke-width="1.6" marker-end="url(#arrow2)"/>
+    <text x="974" y="510">调用 / 装配</text>
+    <path d="M930,534 L966,534" stroke="#9a958a" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrow2g)"/>
+    <text x="974" y="538">数据 / 事件流</text>
+  </g>
+</svg>
+<figcaption class="caption">这张图回答：一次下载在 CLI 模式和 serve 模式下分别怎么流。两条路径在 <code>internal/downloader</code> 汇合——这是"不重新实现下载器"不变量的代码落点。</figcaption>
+</figure>
+
+<!-- ============ 图 3：API 面 ============ -->
+<h2><span class="no">③</span>serve 的 HTTP / WS API 面</h2>
+<p>全部 23 个端点注册于 <code>internal/server/handlers.go:175-208</code>，按职责分组如下：</p>
+
+<figure>
+<table class="ep-group">
+  <thead><tr><th>分组</th><th>端点</th></tr></thead>
+  <tbody>
+    <tr><td>系统</td><td><code>GET /api/health</code> · <code>GET /api/ws</code>（WebSocket 升级）</td></tr>
+    <tr><td>下载队列</td><td><code>POST /api/start-download</code> · <code>POST /api/cancel-download</code> · <code>POST /api/retry-download</code> · <code>POST /api/get-downloads</code> · <code>GET /api/downloads</code> · <code>POST /api/delete-download</code> · <code>POST /api/pause-download</code> 与 <code>POST /api/resume-download</code>（固定返回不支持）</td></tr>
+    <tr><td>元数据</td><td><code>POST /api/get-video-info</code> · <code>POST /api/get-video-formats</code> · <code>POST /api/get-playlist-info</code></td></tr>
+    <tr><td>设置</td><td><code>POST /api/get-settings</code> · <code>POST /api/update-settings</code> · <code>POST /api/get-default-output-dir</code></td></tr>
+    <tr><td>VTT 分析</td><td><code>POST /api/analyze-vtt</code> · <code>GET /api/vtt-reports</code> · <code>GET /api/vtt-report/{id}</code> · <code>POST /api/delete-vtt-report</code></td></tr>
+    <tr><td>本地操作</td><td><code>POST /api/extract-audio</code>（FFmpeg）· <code>POST /api/open-download-folder</code> · <code>POST /api/reveal-in-folder</code></td></tr>
+  </tbody>
+</table>
+<figcaption class="caption">这张表回答：serve 对外暴露了什么。所有响应走统一 envelope <code>{"success", "data"|"error"}</code>。</figcaption>
+</figure>
+
+<!-- ============ 图 4：模块清单 ============ -->
+<h2><span class="no">④</span>模块清单与代码量</h2>
+<p>11 个包按行数排序。条形按最大值（server 3,327 行）归一化。</p>
+
+<figure>
+<table class="bench">
+  <thead><tr><th>包 / 位置</th><th style="width:38%">行数对比</th><th>文件</th><th>行数</th></tr></thead>
+  <tbody>
+    <tr><td><code>internal/server</code></td>
+        <td><span class="bench-track"><span class="bench-fill" style="--pct:100"></span></span></td>
+        <td class="num">10</td><td class="num">3,327</td></tr>
+    <tr><td><code>internal/downloader</code></td>
+        <td><span class="bench-track"><span class="bench-fill" style="--pct:38"></span></span></td>
+        <td class="num">3</td><td class="num">1,261</td></tr>
+    <tr><td><code>internal/record</code></td>
+        <td><span class="bench-track"><span class="bench-fill" style="--pct:29"></span></span></td>
+        <td class="num">2</td><td class="num">962</td></tr>
+    <tr><td><code>cmd</code></td>
+        <td><span class="bench-track"><span class="bench-fill" style="--pct:27"></span></span></td>
+        <td class="num">6</td><td class="num">900</td></tr>
+    <tr><td><code>internal/vtt</code></td>
+        <td><span class="bench-track"><span class="bench-fill" style="--pct:15"></span></span></td>
+        <td class="num">2</td><td class="num">485</td></tr>
+    <tr><td><code>internal/ytdlpbin</code></td>
+        <td><span class="bench-track"><span class="bench-fill" style="--pct:14"></span></span></td>
+        <td class="num">5</td><td class="num">465</td></tr>
+    <tr><td><code>internal/playliststate</code></td>
+        <td><span class="bench-track"><span class="bench-fill" style="--pct:6"></span></span></td>
+        <td class="num">1</td><td class="num">210</td></tr>
+    <tr><td><code>internal/tui</code></td>
+        <td><span class="bench-track"><span class="bench-fill" style="--pct:6"></span></span></td>
+        <td class="num">1</td><td class="num">205</td></tr>
+    <tr><td><code>internal/config</code></td>
+        <td><span class="bench-track"><span class="bench-fill" style="--pct:5"></span></span></td>
+        <td class="num">2</td><td class="num">169</td></tr>
+    <tr><td><code>scripts/</code>（cut_mp3.py）</td>
+        <td><span class="bench-track"><span class="bench-fill" style="--pct:4"></span></span></td>
+        <td class="num">1</td><td class="num">135</td></tr>
+    <tr><td><code>main.go</code></td>
+        <td><span class="bench-track"><span class="bench-fill" style="--pct:0.5"></span></span></td>
+        <td class="num">1</td><td class="num">7</td></tr>
+  </tbody>
+</table>
+<figcaption class="caption">这张表回答：代码都在哪、各占多大。口径：2026-11-22 清点，含 8 个测试文件；<code>scripts/*.sh</code> 未计入。</figcaption>
+</figure>
+
+<!-- ============ 关键事实 ============ -->
+<h2><span class="no">⑤</span>值得知道的几个事实</h2>
+<ul class="facts">
+  <li><strong>下载历史只有一份</strong>：CLI 与 serve 都追加 <code>$VYTDL_HOME/download_record.json</code>（<code>internal/record</code>，带锁原子写）。<code>vytdl.db</code> 只是 serve 的实时队列（downloads / settings / vtt_reports 三张表），回答"历史上下过什么"要用 <code>vYtDL records</code>。</li>
+  <li><strong>领域类型长在 downloader 里</strong>：<code>DownloadResult</code>、<code>ProgressUpdate</code> 定义在 <code>internal/downloader</code>，导致 <code>record</code> 和 <code>tui</code> 反向依赖它——这是依赖表里两条"向上"的边。</li>
+  <li><strong>server 是最大的包</strong>（3,327 行，约占 41%）：HTTP 装配、队列调度、SQLite、元数据、VTT 分析、音频提取都在一个包里，内部按文件分工（handlers / queue / database / hub / meta / vttanalyzer / audio）。</li>
+  <li><strong>yt-dlp 永远是子进程</strong>：vYtDL 不重新实现下载 / 鉴权，cookie、proxy、user-agent、extractor-args 原样透传。yt-dlp 二进制由 <code>internal/ytdlpbin</code> 按序解析：显式路径 → PATH → 内嵌（<code>-tags embed_ytdlp</code>）→ <code>./bin/yt-dlp</code>（缺失时自动下载的目标位置）→ 用户缓存目录旧副本。</li>
+  <li><strong>没有域名白名单</strong>：站点覆盖 = 当前 yt-dlp extractor 的覆盖；X/Twitter 单条推文自动 <code>twitter:api=syndication</code>，用户显式传 <code>twitter:api=</code> 时优先。</li>
+</ul>
+
+</div>
+</body>
+</html>

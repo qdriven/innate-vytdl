@@ -4,8 +4,8 @@
 //  1. Explicit path (flag / config / YT_DL_BIN)
 //  2. yt-dlp or youtube-dl on PATH
 //  3. Binary embedded at build time (-tags embed_ytdlp)
-//  4. Cached copy under the user cache dir
-//  5. Download from GitHub Releases into the cache
+//  4. Local managed copy in ./bin (auto-download target; --install-yt-dlp updates it)
+//  5. Legacy cached copy under the user cache dir (no auto-download)
 package ytdlpbin
 
 import (
@@ -34,7 +34,12 @@ func Resolve(explicit string) (string, error) {
 	if path, err := ensureEmbedded(); err == nil && path != "" {
 		return path, nil
 	}
-	if path, err := ensureCached(true); err == nil && path != "" {
+	if path, err := ensureLocalBin(true); err == nil && path != "" {
+		return path, nil
+	}
+	// Legacy location from before ./bin existed: use an existing copy but
+	// never auto-download there anymore.
+	if path, err := ensureCached(false); err == nil && path != "" {
 		return path, nil
 	}
 	return "", fmt.Errorf("%w\n%s", ErrNotFound, installHint())
@@ -81,6 +86,30 @@ func cachedBinaryPath() (string, error) {
 		name = "yt-dlp.exe"
 	}
 	return filepath.Join(dir, name), nil
+}
+
+// localBinaryPath returns ./bin/yt-dlp relative to the current directory:
+// the managed location for the auto-downloaded binary.
+func localBinaryPath() string {
+	name := "yt-dlp"
+	if runtime.GOOS == "windows" {
+		name = "yt-dlp.exe"
+	}
+	return filepath.Join("bin", name)
+}
+
+func ensureLocalBin(downloadIfMissing bool) (string, error) {
+	path := localBinaryPath()
+	if st, err := os.Stat(path); err == nil && !st.IsDir() && st.Size() > 0 {
+		return path, nil
+	}
+	if !downloadIfMissing {
+		return "", ErrNotFound
+	}
+	if err := DownloadTo(path); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func ensureCached(downloadIfMissing bool) (string, error) {

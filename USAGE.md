@@ -37,7 +37,7 @@ EMBED=1 ONLY=windows ./scripts/build.sh
 ## 快速开始
 
 ```bash
-./vYtDL download --install-yt-dlp        # 可选：缓存一份新的 yt-dlp
+./vYtDL download --install-yt-dlp        # 可选：下载/更新 yt-dlp 到 ./bin
 
 # YouTube 单视频（1080p，默认 EN+ZH 字幕）
 ./vYtDL download --no-tui -o ./downloads -q 1080 \
@@ -141,7 +141,8 @@ Cobra 根命令的 `Use` 是 `yt-dl`，所以 `--help` 里显示 `yt-dl`；构�
 | `--retries` | `10` | 同时设置 `--retries` 与 `--extractor-retries` |
 | `--socket-timeout` | `30` | 网络超时（秒） |
 | `--force-ipv4` | 关 | 强制 IPv4 |
-| `--install-yt-dlp` | 关 | 下载/更新 yt-dlp 到用户缓存后退出（不需要 URL） |
+| `--install-yt-dlp` | 关 | 下载/更新 yt-dlp 到 `./bin` 后退出（不需要 URL） |
+| `-a, --batch-file` | 空 | 从文本文件读 URL：每行一个，`#` 开头为注释，`-` 读 stdin；与位置参数 URL 合并，可与 `-j` 并发 |
 
 ### 画质 / 容器语义
 
@@ -264,11 +265,11 @@ Cobra 根命令的 `Use` 是 `yt-dl`，所以 `--help` 里显示 `yt-dl`；构�
 1. `--yt-dlp-bin` / `config.json` `yt_dlp_bin` / `YT_DL_BIN`
 2. PATH 上的 `yt-dlp` / `youtube-dl`
 3. 内嵌二进制（`-tags embed_ytdlp`）
-4. 缓存：OS 用户缓存目录下的 `vYtDL`（macOS `~/Library/Caches/vYtDL`，Linux `~/.cache/vYtDL`，Windows `%LocalAppData%\vYtDL`）
-5. GitHub Releases 自动下载
+4. `./bin/yt-dlp`：当前目录下的托管副本——不存在时**自动下载到这里**；`--install-yt-dlp` 重新下载即更新
+5. 用户缓存目录下的旧副本（`~/Library/Caches/vYtDL` 等，只读兼容）
 
 ```bash
-./vYtDL download --install-yt-dlp
+./vYtDL download --install-yt-dlp          # 下载 / 更新 ./bin/yt-dlp
 export VYTDL_YTDLP_MIRROR="https://ghproxy.net/https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
 ```
 
@@ -465,9 +466,16 @@ YouTube 越来越多地要求 **JS 运行时**来解 `n` 参数挑战。vYtDL �
   "https://x.com/user/status/123"
 ```
 
-识别的域名：`x.com`、`twitter.com` 及其子域、`vxtwitter.com`、`fxtwitter.com`、`nitter.net`（`www.` / `mobile.` 前缀忽略）。用户显式传入任何 `twitter:api=` 时自动回退失效（用户优先）。
+识别的域名：`x.com`、`twitter.com`（含其任意子域）、`vxtwitter.com`、`fxtwitter.com`、`nitter.net`（后三者的子域不识别，`www.` / `mobile.` 前缀忽略）。用户显式传入任何 `twitter:api=` 时自动回退失效（用户优先）。
 
 只认带 `/status/<id>` 的单条推文。`https://x.com/<handle>` 和 `/media` 列不出该账号的发帖，也不能按「近 3 个月」筛选：当前 yt-dlp 没有用户时间线 extractor，syndication 按一条推文取视频，CLI 没有日期参数。多个 status 可以一次传入。一条推文里的多段视频给这条链接加 `--playlist`。调用约定见 `skills/x-video-dl/SKILL.md`。
+
+不想编译 Go 程序时，可用 skill 自带的轻量脚本（直连 yt-dlp + 浏览器 cookie，不走 vYtDL 的进度 / 历史记录）：
+
+```bash
+./skills/x-video-dl/scripts/x_dl.sh "https://x.com/IndianaFever/status/2099166214639513805"
+./skills/x-video-dl/scripts/x_dl.sh -b firefox -o ./downloads "URL1" "URL2"
+```
 
 ---
 
@@ -580,7 +588,7 @@ YouTube 越来越多地要求 **JS 运行时**来解 `n` 参数挑战。vYtDL �
 | `--home` | `~/.vytdl` | `VYTDL_HOME` | 数据根目录：`vytdl.db`、下载历史 |
 | `--dev` | 关 | — | 请求日志 |
 
-下载默认目录为 `config.json` 的 `output_dir`（若设置），否则 `<home>/downloads`；`VYTDL_OUTPUT_DIR` 优先于两者（前端设置 `default_output_dir` 仍作用于入队请求）。
+serve 的默认下载目录解析链：`VYTDL_OUTPUT_DIR` 环境变量 → `config.json` 的 `output_dir` → `<home>/downloads`（首次启动时种子化进设置 `default_output_dir`）。入队目录优先级：请求 `output_dir` > 设置 `default_output_dir`（前端可改）> 启动解析链。
 
 启动时会打印：
 
@@ -653,7 +661,7 @@ embed_thumbnail, embed_metadata, embed_chapters, sponsorblock_remove,
 filename_template, po_token, extractor_args, config_location
 ```
 
-服务模式（`serve`）会：默认忽略用户级 yt-dlp 配置（`--ignore-config`，除非传 `config_location`）；强制 `--windows-filenames`；自动字幕加 `--sleep-subtitles 1`；片段裁剪使用 muxed-safe 选择器并关闭 direct merge；X/Twitter 自动 syndication。
+服务模式（`serve`）会：默认忽略用户级 yt-dlp 配置（`--ignore-config`，除非传 `config_location`）；强制 `--windows-filenames`；请求显式传 `write_auto_subs: true` 时加 `--sleep-subtitles 1`；片段裁剪使用 muxed-safe 选择器并关闭 direct merge；X/Twitter 自动 syndication。
 
 ### WebSocket 事件
 
@@ -688,7 +696,7 @@ filename_template, po_token, extractor_args, config_location
 
 ### VTT 分析与音频提取
 
-- `POST /api/analyze-vtt` 会依次尝试字幕语言 `zh → en → ja → ko → zh-Hans → zh-Hant`，下载到 `<输出目录>/vtt-temp/<reportId>`，解析成 Markdown 后存进 `vtt_reports`，完成后清理临时目录。
+- `POST /api/analyze-vtt` 会依次尝试字幕语言 `zh → en → ja → ko → zh-Hans → zh-Hant`，下载到 daemon 默认下载目录的 `vtt-temp/<reportId>`，解析成 Markdown 后存进 `vtt_reports`，完成后清理临时目录。
 - `POST /api/extract-audio` 调 FFmpeg；`audio_format` 支持 `mp3`（默认）、`m4a`/`aac`、`flac`、`wav`、`ogg`、`opus`，成功返回 `data.audio_path`。FFmpeg 路径可用 `FFMPEG_PATH` 覆盖。
 - `GET /api/vtt-reports` 分页：`limit` 默认 20、上限 100，`page` / `lang` 可选。
 - 打开 / 定位目录在 Docker 里会失败，返回 `success:false`（这是预期行为，前端会提示）。
@@ -717,20 +725,28 @@ filename_template, po_token, extractor_args, config_location
 
 ---
 
-## Shell 封装与批量脚本
+## Shell 封装与批量下载
 
 ```bash
 # 单视频 / 合集（内部用 go run .，参数固定）
 ./scripts/download_video.sh "https://www.youtube.com/watch?v=ID" ./downloads 1080
 ./scripts/download_collection.sh "https://www.youtube.com/playlist?list=PLxxxx" ./downloads 720
 
-# Python 批量：文件里一行一个 URL，# 开头为注释
-python3 batch_download.py urls.txt ./downloads
-python3 batch_download.py urls.txt ./downloads -q 1080 --playlist
-python3 batch_download.py urls.txt ./downloads --log-format csv
+# 批量：URL 清单文件（每行一个 URL，# 开头为注释）
+./vYtDL download -a urls.txt -o ./downloads                 # 串行
+./vYtDL download -a urls.txt -o ./downloads -q 1080         # 限画质
+./vYtDL download -a urls.txt -o ./downloads -p              # 全部按播放列表
+./vYtDL download -a urls.txt -o ./downloads -j 3            # 并发 3
+cat urls.txt | ./vYtDL download -a - -o ./downloads         # 从 stdin 读
+
+# FFmpeg 裁剪 MP3（本地工具，不走下载）
+./scripts/cut_mp3.sh -i in.mp3 -s 00:01:30 -e 00:02:45 -o out.mp3
+
+# X/Twitter 轻量下载（直连 yt-dlp + 浏览器 cookie，不起 Go 程序）
+./skills/x-video-dl/scripts/x_dl.sh "https://x.com/user/status/123"
 ```
 
-`batch_download.py` 会查找当前目录或 PATH 里的 `vYtDL`，逐条调用 `download`，最后汇总成功 / 失败数。它接受任意 yt-dlp 支持的 URL，不限于 YouTube。
+`--batch-file`（`-a`）把清单里的 URL 与位置参数 URL 合并成一次 `download` 调用：进度统一在 TUI / 纯文本输出里，结束后一次性写入历史并打印 `Completed: X succeeded, Y failed.` 汇总；单个 URL 失败不影响其余。接受任意 yt-dlp 支持的 URL，不限于 YouTube。
 
 ---
 
