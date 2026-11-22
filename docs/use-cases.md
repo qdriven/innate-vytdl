@@ -400,6 +400,6 @@ go build -tags embed_ytdlp -o vYtDL .
 
 **说明**：
 
-- 内嵌二进制在解析顺序里排在 PATH 之后、缓存之前。
+- 内嵌二进制在解析顺序里排在 PATH 之后、`./bin` 之前。
 - 交叉编译带内嵌：`EMBED=1 ONLY=windows ./scripts/build.sh`，产物在 `dist/`。
 - GitHub 下载慢时可用 `VYTDL_YTDLP_MIRROR` 指向镜像。

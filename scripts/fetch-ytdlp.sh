@@ -2,7 +2,7 @@
 # Download official yt-dlp release binaries for the current (or target) platform.
 #
 # Usage:
-#   ./scripts/fetch-ytdlp.sh              # → ~/.cache/vYtDL/yt-dlp
+#   ./scripts/fetch-ytdlp.sh              # → ./bin/yt-dlp（与 --install-yt-dlp 一致）
 #   ./scripts/fetch-ytdlp.sh --embed      # → internal/ytdlpbin/binaries/yt-dlp.bin
 #   GOOS=linux GOARCH=amd64 ./scripts/fetch-ytdlp.sh --embed
 #   ./scripts/fetch-ytdlp.sh --outdir ./dist/tools
@@ -71,12 +71,13 @@ elif [[ -n "${OUTDIR}" ]]; then
     DEST="${OUTDIR}/yt-dlp"
   fi
 else
-  CACHE="${XDG_CACHE_HOME:-${HOME}/.cache}/vYtDL"
-  mkdir -p "${CACHE}"
+  # Default: managed copy in ./bin, same location --install-yt-dlp uses.
+  DEST_DIR="${PROJECT_DIR}/bin"
+  mkdir -p "${DEST_DIR}"
   if [[ "${GOOS_VAL}" == "windows" ]]; then
-    DEST="${CACHE}/yt-dlp.exe"
+    DEST="${DEST_DIR}/yt-dlp.exe"
   else
-    DEST="${CACHE}/yt-dlp"
+    DEST="${DEST_DIR}/yt-dlp"
   fi
 fi
 
